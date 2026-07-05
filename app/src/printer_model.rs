@@ -1,18 +1,30 @@
 use bevy::prelude::*;
 
+use crate::kinematics::{BedRig, CarriageRig, GantryRig, LeadScrew};
+
 pub const BED_SIZE: f32 = 220.0;
 pub const BED_THICKNESS: f32 = 4.0;
 pub const FRAME_HEIGHT: f32 = 260.0;
-pub const FRAME_MARGIN: f32 = 20.0;
+/// Fixed world-Z lane the nozzle lives in. The bed slides under it to realize
+/// gcode Y motion (i3-style bedslinger), so the machine is symmetric around
+/// this plane: bed local origin sits at world Z = NOZZLE_Z - gcode_y.
+pub const NOZZLE_Z: f32 = BED_SIZE / 2.0;
 
-/// Marker for the entity whose transform tracks the interpolated nozzle
-/// position every frame (see `playback::update_head_transform`).
-#[derive(Component)]
-pub struct PrintHead;
+/// X positions of the two frame uprights / lead screws, just outside travel.
+const FRAME_X_LEFT: f32 = -45.0;
+const FRAME_X_RIGHT: f32 = BED_SIZE + 45.0;
+const SCREW_X_LEFT: f32 = -22.0;
+const SCREW_X_RIGHT: f32 = BED_SIZE + 22.0;
 
 /// Parent entity that all per-layer filament meshes are spawned under.
+/// A child of [`BedRig`], so the printed object rides the moving bed.
 #[derive(Component)]
 pub struct PrintedLayerRoot;
+
+/// Placeholder primitive meshes standing in for the Blender-authored glb
+/// parts; despawned once the real parts are discovered and reparented.
+#[derive(Component)]
+pub struct Placeholder;
 
 pub fn setup_scene(
     mut commands: Commands,
@@ -33,50 +45,77 @@ pub fn setup_scene(
         ..default()
     });
 
-    // Base plate for visual context.
+    // Base plate, sized for the full bed travel envelope (world Z -110..330).
     commands.spawn((
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(340.0, 340.0))),
+        Mesh3d(meshes.add(Plane3d::default().mesh().size(380.0, 560.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color: Color::srgb(0.10, 0.10, 0.12),
             ..default()
         })),
-        Transform::from_xyz(BED_SIZE / 2.0, -BED_THICKNESS - 0.5, BED_SIZE / 2.0),
+        Transform::from_xyz(BED_SIZE / 2.0, -14.0, NOZZLE_Z),
     ));
 
-    // Print bed.
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(BED_SIZE, BED_THICKNESS, BED_SIZE))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.25, 0.5, 0.35),
-            perceptual_roughness: 0.9,
-            ..default()
-        })),
-        Transform::from_xyz(BED_SIZE / 2.0, -BED_THICKNESS / 2.0, BED_SIZE / 2.0),
-    ));
-
-    // Decorative frame posts, purely for visual context (not kinematically
-    // linked to the toolpath — only the head assembly moves).
-    let post_mesh = meshes.add(Cylinder::new(4.0, FRAME_HEIGHT));
-    let post_mat = materials.add(StandardMaterial {
+    let steel = materials.add(StandardMaterial {
         base_color: Color::srgb(0.55, 0.55, 0.6),
         ..default()
     });
-    for (dx, dz) in [
-        (-FRAME_MARGIN, -FRAME_MARGIN),
-        (BED_SIZE + FRAME_MARGIN, -FRAME_MARGIN),
-        (-FRAME_MARGIN, BED_SIZE + FRAME_MARGIN),
-        (BED_SIZE + FRAME_MARGIN, BED_SIZE + FRAME_MARGIN),
-    ] {
+    let dark_steel = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.3, 0.3, 0.35),
+        ..default()
+    });
+
+    // Two Y rails the bed carriage slides on, spanning the travel envelope.
+    let rail_mesh = meshes.add(Cuboid::new(12.0, 6.0, 470.0));
+    for x in [60.0, 160.0] {
         commands.spawn((
-            Mesh3d(post_mesh.clone()),
-            MeshMaterial3d(post_mat.clone()),
-            Transform::from_xyz(dx, FRAME_HEIGHT / 2.0, dz),
+            Placeholder,
+            Mesh3d(rail_mesh.clone()),
+            MeshMaterial3d(dark_steel.clone()),
+            Transform::from_xyz(x, -10.0, NOZZLE_Z),
         ));
     }
 
-    // Print head assembly: a carriage block with a nozzle cone whose tip is
-    // the entity's local origin, so `PrintHead`'s translation always equals
-    // the nozzle's gcode (x, y, z).
+    // Two frame uprights in the nozzle lane, carrying the gantry.
+    let post_mesh = meshes.add(Cuboid::new(14.0, FRAME_HEIGHT, 14.0));
+    for x in [FRAME_X_LEFT, FRAME_X_RIGHT] {
+        commands.spawn((
+            Placeholder,
+            Mesh3d(post_mesh.clone()),
+            MeshMaterial3d(steel.clone()),
+            Transform::from_xyz(x, FRAME_HEIGHT / 2.0 - 13.0, NOZZLE_Z),
+        ));
+    }
+
+    // Lead screws: spin in place (rotation driven by `drive_kinematics`);
+    // the small flag cube makes the rotation visible on placeholder shapes.
+    let screw_mesh = meshes.add(Cylinder::new(3.0, FRAME_HEIGHT - 30.0));
+    let flag_mesh = meshes.add(Cuboid::new(9.0, 3.0, 3.0));
+    for (x, dir) in [(SCREW_X_LEFT, 1.0), (SCREW_X_RIGHT, -1.0)] {
+        commands
+            .spawn((
+                LeadScrew { dir },
+                Placeholder,
+                Transform::from_xyz(x, (FRAME_HEIGHT - 30.0) / 2.0, NOZZLE_Z),
+                Visibility::default(),
+            ))
+            .with_children(|parent| {
+                parent.spawn((
+                    Mesh3d(screw_mesh.clone()),
+                    MeshMaterial3d(steel.clone()),
+                    Transform::default(),
+                ));
+                parent.spawn((
+                    Mesh3d(flag_mesh.clone()),
+                    MeshMaterial3d(dark_steel.clone()),
+                    Transform::from_xyz(5.0, 0.0, 0.0),
+                ));
+            });
+    }
+
+    // Gantry rig: world Y == gcode Z. The beam is a child; the carriage rig
+    // hangs from it with its local origin at the nozzle tip so its local X
+    // is exactly the gcode X.
+    let beam_mesh = meshes.add(Cuboid::new(FRAME_X_RIGHT - FRAME_X_LEFT + 30.0, 16.0, 16.0));
     let carriage_mesh = meshes.add(Cuboid::new(28.0, 18.0, 28.0));
     let carriage_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.8, 0.2, 0.2),
@@ -89,27 +128,65 @@ pub fn setup_scene(
     });
 
     commands
-        .spawn((
-            PrintHead,
-            Transform::from_xyz(0.0, 0.0, 0.0),
-            Visibility::default(),
-        ))
-        .with_children(|parent| {
-            parent.spawn((
-                Mesh3d(carriage_mesh),
-                MeshMaterial3d(carriage_mat),
-                Transform::from_xyz(0.0, 24.0, 0.0),
+        .spawn((GantryRig, Transform::default(), Visibility::default()))
+        .with_children(|gantry| {
+            gantry.spawn((
+                Placeholder,
+                Mesh3d(beam_mesh),
+                MeshMaterial3d(steel.clone()),
+                Transform::from_xyz(BED_SIZE / 2.0, 42.0, NOZZLE_Z),
             ));
-            parent.spawn((
-                Mesh3d(nozzle_mesh),
-                MeshMaterial3d(nozzle_mat),
-                Transform::from_xyz(0.0, 6.0, 0.0),
-            ));
+            gantry
+                .spawn((
+                    CarriageRig,
+                    Transform::from_xyz(0.0, 0.0, NOZZLE_Z),
+                    Visibility::default(),
+                ))
+                .with_children(|carriage| {
+                    carriage.spawn((
+                        Placeholder,
+                        Mesh3d(carriage_mesh),
+                        MeshMaterial3d(carriage_mat),
+                        Transform::from_xyz(0.0, 24.0, 0.0),
+                    ));
+                    carriage.spawn((
+                        Placeholder,
+                        Mesh3d(nozzle_mesh),
+                        MeshMaterial3d(nozzle_mat),
+                        Transform::from_xyz(0.0, 6.0, 0.0),
+                    ));
+                });
         });
 
-    commands.spawn((
-        PrintedLayerRoot,
-        Transform::default(),
-        Visibility::default(),
-    ));
+    // Bed rig: origin = gcode (0,0,0), bed top surface at local Y=0.
+    // Starts at home (gcode y = 0 -> world z = NOZZLE_Z).
+    let bed_mesh = meshes.add(Cuboid::new(BED_SIZE, BED_THICKNESS, BED_SIZE));
+    let bed_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.25, 0.5, 0.35),
+        perceptual_roughness: 0.9,
+        ..default()
+    });
+    let bed_carriage_mesh = meshes.add(Cuboid::new(150.0, 6.0, 240.0));
+
+    commands
+        .spawn((
+            BedRig,
+            Transform::from_xyz(0.0, 0.0, NOZZLE_Z),
+            Visibility::default(),
+        ))
+        .with_children(|bed| {
+            bed.spawn((
+                Placeholder,
+                Mesh3d(bed_mesh),
+                MeshMaterial3d(bed_mat),
+                Transform::from_xyz(BED_SIZE / 2.0, -BED_THICKNESS / 2.0, BED_SIZE / 2.0),
+            ));
+            bed.spawn((
+                Placeholder,
+                Mesh3d(bed_carriage_mesh),
+                MeshMaterial3d(dark_steel),
+                Transform::from_xyz(BED_SIZE / 2.0, -BED_THICKNESS - 3.0, BED_SIZE / 2.0),
+            ));
+            bed.spawn((PrintedLayerRoot, Transform::default(), Visibility::default()));
+        });
 }

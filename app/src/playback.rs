@@ -1,9 +1,6 @@
 use bevy::prelude::*;
 use motion::MotionEvent;
 
-use crate::coords::gcode_to_bevy;
-use crate::printer_model::PrintHead;
-
 /// Holds the currently loaded toolpath and the playback cursor into it.
 /// Both the gcode-sim backend and (eventually) the firmware emulator backend
 /// only need to populate `toolpath`; everything downstream is backend-agnostic.
@@ -83,17 +80,5 @@ pub fn advance_time(time: Res<Time>, mut state: ResMut<PrintState>) {
     if state.time >= state.total_time {
         state.time = state.total_time;
         state.playing = false;
-    }
-}
-
-pub fn update_head_transform(
-    state: Res<PrintState>,
-    mut heads: Query<&mut Transform, With<PrintHead>>,
-) {
-    let Some((x, y, z)) = state.interpolated_position() else {
-        return;
-    };
-    for mut transform in &mut heads {
-        transform.translation = gcode_to_bevy(x, y, z);
     }
 }

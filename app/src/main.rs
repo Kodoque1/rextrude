@@ -3,6 +3,7 @@ use bevy_egui::{EguiPlugin, EguiStartupSet};
 
 mod camera;
 mod coords;
+mod kinematics;
 mod layers;
 mod loader;
 mod playback;
@@ -28,20 +29,26 @@ fn main() {
     }))
     .add_plugins(EguiPlugin::default())
     .init_resource::<playback::PrintState>()
+    .init_resource::<kinematics::HeadVelocity>()
     .init_resource::<layers::LayerVisuals>()
     .init_resource::<ui::UiState>()
     .add_systems(
         PreStartup,
         camera::setup_camera.before(EguiStartupSet::InitContexts),
     )
-    .add_systems(Startup, printer_model::setup_scene)
+    .add_systems(Startup, printer_model::setup_scene);
+
+    #[cfg(not(target_arch = "wasm32"))]
+    app.add_systems(Startup, loader::autoload_from_env);
+
+    app
     .add_systems(
         Update,
         (
             loader::handle_file_drop,
             playback::advance_time,
             layers::update_layer_meshes,
-            playback::update_head_transform,
+            kinematics::drive_kinematics,
             camera::orbit_camera,
         ),
     )

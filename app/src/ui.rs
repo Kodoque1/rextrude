@@ -13,7 +13,7 @@ use crate::firmware::FirmwareState;
 /// Gcode files embedded directly in the binary so the demo works with zero
 /// setup on both native and wasm builds, regardless of whether drag & drop
 /// or a native file dialog is available.
-const EXAMPLES: &[(&str, &str)] = &[
+pub const EXAMPLES: &[(&str, &str)] = &[
     (
         "calibration_cube.gcode",
         include_str!("../../assets/gcode/calibration_cube.gcode"),
