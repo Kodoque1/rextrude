@@ -1,0 +1,23 @@
+{
+  "name": "printer-emu",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AVR8 firmware emulation harness (ATmega2560 + RAMPS 1.4) for the 3D printer simulator, built on avr8js.",
+  "scripts": {
+    "boot-test": "tsx src/boot-test.ts",
+    "board-test": "tsx src/board-test.ts",
+    "full-test": "tsx src/full-test.ts",
+    "typecheck": "tsc --noEmit",
+    "build:bridge": "esbuild src/browser-bridge.ts --bundle --format=esm --platform=browser --outfile=../app/assets/emu_bridge.js"
+  },
+  "dependencies": {
+    "avr8js": "^0.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.28.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

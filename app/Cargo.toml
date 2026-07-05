@@ -1,0 +1,55 @@
+[package]
+name = "app"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+motion = { path = "../crates/motion" }
+gcode-sim = { path = "../crates/gcode-sim" }
+
+[dependencies.bevy]
+version = "0.19"
+default-features = false
+features = [
+    "bevy_asset",
+    # "bevy_audio" + "wav" are added in the audio phase; native builds need the
+    # ALSA headers first: sudo apt install libasound2-dev
+    "bevy_gltf",
+    "bevy_winit",
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_pbr",
+    "bevy_ui",
+    "bevy_text",
+    "bevy_sprite",
+    "bevy_gizmos",
+    "bevy_log",
+    "x11",
+    "webgl2",
+    "tonemapping_luts",
+    "png",
+]
+
+[dependencies.bevy_egui]
+version = "0.41"
+default-features = false
+features = ["default_fonts", "render"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
+version = "0.3"
+features = [
+    "Document",
+    "Window",
+    "DragEvent",
+    "DataTransfer",
+    "File",
+    "FileList",
+    "FileReader",
+    "Event",
+    "ProgressEvent",
+    "EventTarget",
+]
