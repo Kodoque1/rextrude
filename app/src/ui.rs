@@ -6,6 +6,7 @@ use bevy_egui::{egui, EguiContexts};
 use crate::layers::LayerVisuals;
 use crate::loader::load_gcode_text;
 use crate::playback::PrintState;
+use crate::theme;
 
 #[cfg(target_arch = "wasm32")]
 use crate::firmware::FirmwareState;
@@ -35,12 +36,257 @@ pub enum Backend {
     Firmware,
 }
 
-#[derive(Resource, Default)]
+/// Where a data section lives: docked in the side panel or popped out into
+/// its own movable window.
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
+pub enum Placement {
+    #[default]
+    Docked,
+    Floating,
+}
+
+#[derive(Resource)]
 pub struct UiState {
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub native_path: String,
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     pub backend: Backend,
+    pub show_panel: bool,
+    pub crt: bool,
+}
+
+impl Default for UiState {
+    fn default() -> Self {
+        Self {
+            native_path: String::new(),
+            backend: Backend::default(),
+            show_panel: true,
+            crt: true,
+        }
+    }
+}
+
+/// Codec-style "!" notification: message + seconds left on screen.
+#[derive(Resource, Default)]
+pub struct AlertState {
+    pub current: Option<(String, f32)>,
+}
+
+impl AlertState {
+    pub fn raise(&mut self, message: impl Into<String>, seconds: f32) {
+        self.current = Some((message.into(), seconds));
+    }
+}
+
+/// Raises alerts on toolpath load and print completion, and expires them.
+pub fn update_alerts(
+    time: Res<Time>,
+    state: Res<PrintState>,
+    mut alerts: ResMut<AlertState>,
+    mut last_generation: Local<u64>,
+    mut was_playing: Local<bool>,
+) {
+    if state.generation != *last_generation {
+        *last_generation = state.generation;
+        if !state.toolpath.is_empty() {
+            alerts.raise(
+                format!("DATA RECEIVED: {}", state.loaded_file_name.to_uppercase()),
+                3.5,
+            );
+        }
+    }
+    if *was_playing && !state.playing && state.total_time > 0.0 && state.time >= state.total_time {
+        alerts.raise("PRINT COMPLETE", 2.6);
+    }
+    *was_playing = state.playing;
+
+    if let Some((_, remaining)) = &mut alerts.current {
+        *remaining -= time.delta_secs();
+        if *remaining <= 0.0 {
+            alerts.current = None;
+        }
+    }
+}
+
+/// Tab hides/shows the side panel, like dismissing the codec screen.
+pub fn keyboard_toggles(keys: Res<ButtonInput<KeyCode>>, mut ui_state: ResMut<UiState>) {
+    if keys.just_pressed(KeyCode::Tab) {
+        ui_state.show_panel = !ui_state.show_panel;
+    }
+}
+
+fn codec_header(root: &mut egui::Ui, state: &PrintState, ui_state: &mut UiState) {
+    egui::Panel::top("codec_header")
+        .frame(
+            egui::Frame::new()
+                .fill(theme::BG_PANEL)
+                .inner_margin(egui::Margin::symmetric(12, 6)),
+        )
+        .show(root, |ui| {
+            let ctx = ui.ctx().clone();
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new("140.85")
+                        .size(30.0)
+                        .color(theme::TEXT),
+                );
+                ui.label(egui::RichText::new("‹ ›").size(22.0).color(theme::TEXT_DIM));
+
+                ui.separator();
+
+                let blink = !state.playing || ctx.input(|i| i.time) % 1.0 < 0.65;
+                let title = if state.toolpath.is_empty() {
+                    "STANDBY".to_string()
+                } else {
+                    state.loaded_file_name.to_uppercase()
+                };
+                ui.label(
+                    egui::RichText::new(if blink { "▶ PRINT OPS" } else { "  PRINT OPS" })
+                        .size(24.0)
+                        .color(theme::TEXT),
+                );
+                ui.label(
+                    egui::RichText::new(title)
+                        .size(20.0)
+                        .color(theme::TEXT_DIM),
+                );
+
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let label = if ui_state.show_panel { "PANEL ▸" } else { "◂ PANEL" };
+                    if ui.button(label).on_hover_text("Tab").clicked() {
+                        ui_state.show_panel = !ui_state.show_panel;
+                    }
+                    if !state.toolpath.is_empty() {
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "t = {:>6.1}s / {:.1}s",
+                                state.time, state.total_time
+                            ))
+                            .size(20.0)
+                            .color(theme::TEXT),
+                        );
+                    }
+                });
+            });
+        });
+}
+
+fn alert_overlay(ctx: &egui::Context, alerts: &AlertState) {
+    let Some((message, remaining)) = &alerts.current else {
+        return;
+    };
+    // Hard blink for the first half second, like the codec call sting.
+    if *remaining > 1.6 && ctx.input(|i| i.time * 6.0) as i64 % 2 == 0 {
+        return;
+    }
+    egui::Area::new(egui::Id::new("codec_alert"))
+        .anchor(egui::Align2::CENTER_TOP, [0.0, 70.0])
+        .order(egui::Order::Foreground)
+        .show(ctx, |ui| {
+            egui::Frame::new()
+                .fill(theme::BG_PANEL)
+                .stroke(egui::Stroke::new(2.0, theme::ALERT_RED))
+                .inner_margin(egui::Margin::symmetric(18, 8))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new("!")
+                                .size(40.0)
+                                .strong()
+                                .color(theme::ALERT_RED),
+                        );
+                        ui.label(
+                            egui::RichText::new(message)
+                                .size(22.0)
+                                .color(theme::TEXT),
+                        );
+                    });
+                });
+        });
+}
+
+fn import_section(ui: &mut egui::Ui, state: &mut PrintState, ui_state: &mut UiState) {
+    // Touched unconditionally so wasm builds don't warn on the unused param.
+    let _ = &mut *ui_state;
+    ui.horizontal_wrapped(|ui| {
+        for &(name, contents) in EXAMPLES {
+            if ui.button(name).clicked() {
+                load_gcode_text(state, name.to_string(), contents);
+            }
+        }
+    });
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        ui.label(egui::RichText::new("LOAD FROM PATH").color(theme::TEXT_DIM));
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut ui_state.native_path).desired_width(200.0),
+            );
+            if ui.button("LOAD").clicked() {
+                match std::fs::read_to_string(&ui_state.native_path) {
+                    Ok(contents) => {
+                        let name = ui_state.native_path.clone();
+                        load_gcode_text(state, name, &contents);
+                    }
+                    Err(err) => {
+                        warn!("failed to read {}: {err}", ui_state.native_path);
+                    }
+                }
+            }
+        });
+    }
+    ui.label(
+        egui::RichText::new("(or drag & drop a .gcode file)")
+            .small()
+            .color(theme::TEXT_DIM),
+    );
+}
+
+fn playback_section(ui: &mut egui::Ui, state: &mut PrintState, layer_visuals: &LayerVisuals) {
+    if state.toolpath.is_empty() {
+        ui.label(egui::RichText::new("NO TOOLPATH LOADED").color(theme::TEXT_DIM));
+        return;
+    }
+
+    ui.horizontal(|ui| {
+        let label = if state.playing { "|| PAUSE" } else { "▶ PLAY" };
+        if ui.button(label).clicked() {
+            state.playing = !state.playing;
+        }
+        if ui.button("↺ RESTART").clicked() {
+            state.time = 0.0;
+            state.playing = true;
+        }
+    });
+
+    ui.add(
+        egui::Slider::new(&mut state.speed, 0.1..=20.0)
+            .text("SPEED")
+            .logarithmic(true),
+    );
+
+    let mut time = state.time;
+    if ui
+        .add(egui::Slider::new(&mut time, 0.0..=state.total_time.max(0.001)).text("TIME (S)"))
+        .changed()
+    {
+        state.time = time;
+    }
+
+    let layer_count = layer_visuals.layer_count();
+    if layer_count > 0 {
+        let idx = state.current_index();
+        let current = layer_visuals.layer_containing(idx).unwrap_or(0);
+        ui.label(format!("LAYER {:02} / {:02}", current + 1, layer_count));
+    }
+}
+
+fn section(ui: &mut egui::Ui, title: &str, add_contents: impl FnOnce(&mut egui::Ui)) {
+    egui::CollapsingHeader::new(egui::RichText::new(title).size(21.0).color(theme::TEXT))
+        .default_open(true)
+        .show(ui, add_contents);
+    ui.add_space(4.0);
 }
 
 pub fn playback_ui(
@@ -48,160 +294,125 @@ pub fn playback_ui(
     mut state: ResMut<PrintState>,
     mut ui_state: ResMut<UiState>,
     layer_visuals: Res<LayerVisuals>,
+    alerts: Res<AlertState>,
+    mut theme_applied: Local<bool>,
     #[cfg(target_arch = "wasm32")] mut firmware: ResMut<FirmwareState>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
-    // Only read from the native-only branch below; touch it unconditionally
-    // so wasm builds (which skip that branch) don't warn on an unused param.
-    let _ = &mut ui_state;
+    if !*theme_applied {
+        theme::apply(ctx);
+        *theme_applied = true;
+    }
 
-    egui::Window::new("3D Printer Simulator")
-        .default_width(320.0)
-        .show(ctx, |ui| {
-            #[cfg(target_arch = "wasm32")]
-            {
-                ui.heading("Backend");
-                ui.horizontal(|ui| {
-                    ui.selectable_value(&mut ui_state.backend, Backend::Gcode, "Simulation (gcode)");
-                    ui.selectable_value(
-                        &mut ui_state.backend,
-                        Backend::Firmware,
-                        "Firmware emulation (Marlin)",
-                    );
-                });
-                ui.separator();
-            }
+    let mut root = egui::Ui::new(
+        ctx.clone(),
+        egui::Id::new("codec_root"),
+        egui::UiBuilder::new()
+            .layer_id(egui::LayerId::background())
+            .max_rect(ctx.viewport_rect()),
+    );
 
-            #[cfg(target_arch = "wasm32")]
-            if ui_state.backend == Backend::Firmware {
-                firmware_ui(ui, &mut firmware, &mut state);
-                return;
-            }
+    codec_header(&mut root, &state, &mut ui_state);
 
-            ui.heading("Import");
-            ui.horizontal_wrapped(|ui| {
-                for &(name, contents) in EXAMPLES {
-                    if ui.button(name).clicked() {
-                        load_gcode_text(&mut state, name.to_string(), contents);
+    if ui_state.show_panel {
+        egui::Panel::right("codec_panel")
+            .exact_size(330.0)
+            .resizable(false)
+            .show(&mut root, |ui| {
+                ui.add_space(6.0);
+
+                #[cfg(target_arch = "wasm32")]
+                {
+                    section(ui, "BACKEND", |ui| {
+                        ui.horizontal(|ui| {
+                            ui.selectable_value(
+                                &mut ui_state.backend,
+                                Backend::Gcode,
+                                "SIMULATION",
+                            );
+                            ui.selectable_value(
+                                &mut ui_state.backend,
+                                Backend::Firmware,
+                                "FIRMWARE (MARLIN)",
+                            );
+                        });
+                    });
+                    if ui_state.backend == Backend::Firmware {
+                        firmware_ui(ui, &mut firmware, &mut state);
+                        return;
                     }
                 }
-            });
 
-            #[cfg(not(target_arch = "wasm32"))]
-            {
-                ui.separator();
-                ui.label("Load from path (native):");
-                ui.horizontal(|ui| {
-                    ui.text_edit_singleline(&mut ui_state.native_path);
-                    if ui.button("Load").clicked() {
-                        match std::fs::read_to_string(&ui_state.native_path) {
-                            Ok(contents) => {
-                                let name = ui_state.native_path.clone();
-                                load_gcode_text(&mut state, name, &contents);
-                            }
-                            Err(err) => {
-                                warn!("failed to read {}: {err}", ui_state.native_path);
-                            }
-                        }
-                    }
+                section(ui, "IMPORT", |ui| {
+                    import_section(ui, &mut state, &mut ui_state);
                 });
-            }
-            ui.label("(or drag & drop a .gcode file onto the window)");
-
-            ui.separator();
-
-            if state.toolpath.is_empty() {
-                ui.label("No toolpath loaded yet.");
-                return;
-            }
-
-            ui.heading("Playback");
-            ui.label(format!("File: {}", state.loaded_file_name));
-            ui.horizontal(|ui| {
-                let label = if state.playing { "Pause" } else { "Play" };
-                if ui.button(label).clicked() {
-                    state.playing = !state.playing;
-                }
-                if ui.button("Restart").clicked() {
-                    state.time = 0.0;
-                    state.playing = true;
-                }
+                section(ui, "PLAYBACK", |ui| {
+                    playback_section(ui, &mut state, &layer_visuals);
+                });
+                section(ui, "SYSTEM", |ui| {
+                    ui.checkbox(&mut ui_state.crt, "CRT SCANLINES");
+                });
             });
+    }
 
-            ui.add(
-                egui::Slider::new(&mut state.speed, 0.1..=20.0)
-                    .text("Speed")
-                    .logarithmic(true),
-            );
+    alert_overlay(ctx, &alerts);
 
-            let mut time = state.time;
-            if ui
-                .add(egui::Slider::new(&mut time, 0.0..=state.total_time.max(0.001)).text("Time (s)"))
-                .changed()
-            {
-                state.time = time;
-            }
-
-            let layer_count = layer_visuals.layer_count();
-            if layer_count > 0 {
-                let idx = state.current_index();
-                let current = layer_visuals.layer_containing(idx).unwrap_or(0);
-                ui.label(format!("Layer {} / {}", current + 1, layer_count));
-            }
-
-            ui.label(format!(
-                "t = {:.1}s / {:.1}s",
-                state.time, state.total_time
-            ));
-        });
+    if ui_state.crt {
+        theme::draw_scanlines(ctx);
+    }
 
     Ok(())
 }
 
 #[cfg(target_arch = "wasm32")]
 fn firmware_ui(ui: &mut egui::Ui, firmware: &mut FirmwareState, state: &mut PrintState) {
-    ui.heading("Firmware");
+    section(ui, "FIRMWARE", |ui| {
+        if !firmware.loaded {
+            ui.label(egui::RichText::new("NO FIRMWARE LOADED").color(theme::TEXT_DIM));
+            if ui.button("LOAD MARLIN (RAMPS 1.4)").clicked() {
+                firmware.load_hex(MARLIN_RAMPS14_HEX, state);
+            }
+            return;
+        }
+
+        ui.horizontal(|ui| {
+            let label = if firmware.playing { "|| PAUSE" } else { "▶ RESUME" };
+            if ui.button(label).clicked() {
+                firmware.playing = !firmware.playing;
+            }
+            ui.label(format!(
+                "HOTEND {:.1}C   BED {:.1}C",
+                firmware.hotend_c, firmware.bed_c
+            ));
+        });
+        ui.label(format!("t = {:.1}s (LIVE)", state.time));
+    });
 
     if !firmware.loaded {
-        ui.label("No firmware loaded yet.");
-        if ui.button("Load Marlin firmware (RAMPS 1.4)").clicked() {
-            firmware.load_hex(MARLIN_RAMPS14_HEX, state);
-        }
         return;
     }
 
-    ui.horizontal(|ui| {
-        let label = if firmware.playing { "Pause" } else { "Resume" };
-        if ui.button(label).clicked() {
-            firmware.playing = !firmware.playing;
-        }
-        ui.label(format!("Hotend: {:.1}C   Bed: {:.1}C", firmware.hotend_c, firmware.bed_c));
-    });
-
-    ui.separator();
-    ui.heading("Send gcode");
-    ui.horizontal_wrapped(|ui| {
-        for &(name, contents) in EXAMPLES {
-            if ui.button(name).clicked() {
-                firmware.send_gcode(contents);
+    section(ui, "SEND GCODE", |ui| {
+        ui.horizontal_wrapped(|ui| {
+            for &(name, contents) in EXAMPLES {
+                if ui.button(name).clicked() {
+                    firmware.send_gcode(contents);
+                }
             }
-        }
+        });
     });
 
-    ui.separator();
-    ui.label(format!("t = {:.1}s (live)", state.time));
-
-    ui.separator();
-    ui.heading("Serial console");
-    egui::ScrollArea::vertical()
-        .max_height(220.0)
-        .stick_to_bottom(true)
-        .show(ui, |ui| {
-            ui.add(
-                egui::TextEdit::multiline(&mut firmware.uart_log)
-                    .desired_width(f32::INFINITY)
-                    .interactive(false)
-                    .font(egui::TextStyle::Monospace),
-            );
-        });
+    section(ui, "SERIAL CONSOLE", |ui| {
+        egui::ScrollArea::vertical()
+            .max_height(220.0)
+            .stick_to_bottom(true)
+            .show(ui, |ui| {
+                ui.add(
+                    egui::TextEdit::multiline(&mut firmware.uart_log)
+                        .desired_width(f32::INFINITY)
+                        .interactive(false)
+                        .font(egui::TextStyle::Monospace),
+                );
+            });
+    });
 }

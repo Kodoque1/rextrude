@@ -10,6 +10,7 @@ mod playback;
 mod printer_model;
 mod printer_rig;
 mod psx;
+mod theme;
 mod ui;
 
 #[cfg(target_arch = "wasm32")]
@@ -36,6 +37,7 @@ fn main() {
     .init_resource::<printer_rig::PendingRigParts>()
     .init_resource::<layers::LayerVisuals>()
     .init_resource::<ui::UiState>()
+    .init_resource::<ui::AlertState>()
     .add_systems(
         PreStartup,
         (
@@ -66,6 +68,8 @@ fn main() {
             printer_rig::discover_rig_parts,
             camera::orbit_camera,
             psx::fit_canvas,
+            ui::update_alerts,
+            ui::keyboard_toggles,
         ),
     )
     .add_systems(bevy_egui::EguiPrimaryContextPass, ui::playback_ui);
