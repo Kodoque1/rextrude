@@ -1,3 +1,6 @@
+[build]
+features = ["audio"]
+
 [[hooks]]
 stage = "pre_build"
 command = "npm"

@@ -4,6 +4,12 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 
+[features]
+# Sound effects + stepper hum. Not in defaults because native builds need
+# the ALSA headers first: sudo apt install libasound2-dev
+# (wasm builds have no such requirement; app/Trunk.toml enables it.)
+audio = ["bevy/bevy_audio", "bevy/wav"]
+
 [dependencies]
 motion = { path = "../crates/motion" }
 gcode-sim = { path = "../crates/gcode-sim" }
@@ -13,8 +19,6 @@ version = "0.19"
 default-features = false
 features = [
     "bevy_asset",
-    # "bevy_audio" + "wav" are added in the audio phase; native builds need the
-    # ALSA headers first: sudo apt install libasound2-dev
     "bevy_gltf",
     # gltf scenes spawn through bevy_world_serialization, which panics on any
     # component type missing from the reflection registry; this default

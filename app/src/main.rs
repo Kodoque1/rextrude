@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use bevy_egui::{EguiPlugin, EguiStartupSet};
 
+mod audio;
 mod camera;
 mod coords;
 mod kinematics;
@@ -39,6 +40,7 @@ fn main() {
     .init_resource::<layers::LayerVisuals>()
     .init_resource::<ui::UiState>()
     .init_resource::<ui::AlertState>()
+    .add_message::<audio::SfxEvent>()
     .add_systems(
         PreStartup,
         (
@@ -57,6 +59,10 @@ fn main() {
 
     #[cfg(not(target_arch = "wasm32"))]
     app.add_systems(Startup, loader::autoload_from_env);
+
+    #[cfg(feature = "audio")]
+    app.add_systems(Startup, audio::setup)
+        .add_systems(Update, (audio::play_sfx, audio::stepper_audio));
 
     app
     .add_systems(

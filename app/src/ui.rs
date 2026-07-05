@@ -3,6 +3,7 @@ use bevy::log::warn;
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 
+use crate::audio::SfxEvent;
 use crate::layers::LayerVisuals;
 use crate::loader::load_gcode_text;
 use crate::playback::PrintState;
@@ -91,6 +92,7 @@ pub fn update_alerts(
     time: Res<Time>,
     state: Res<PrintState>,
     mut alerts: ResMut<AlertState>,
+    mut sfx: MessageWriter<SfxEvent>,
     mut last_generation: Local<u64>,
     mut was_playing: Local<bool>,
 ) {
@@ -101,10 +103,12 @@ pub fn update_alerts(
                 format!("DATA RECEIVED: {}", state.loaded_file_name.to_uppercase()),
                 3.5,
             );
+            sfx.write(SfxEvent::Alert);
         }
     }
     if *was_playing && !state.playing && state.total_time > 0.0 && state.time >= state.total_time {
         alerts.raise("PRINT COMPLETE", 2.6);
+        sfx.write(SfxEvent::CodecCall);
     }
     *was_playing = state.playing;
 
@@ -117,13 +121,23 @@ pub fn update_alerts(
 }
 
 /// Tab hides/shows the side panel, like dismissing the codec screen.
-pub fn keyboard_toggles(keys: Res<ButtonInput<KeyCode>>, mut ui_state: ResMut<UiState>) {
+pub fn keyboard_toggles(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut ui_state: ResMut<UiState>,
+    mut sfx: MessageWriter<SfxEvent>,
+) {
     if keys.just_pressed(KeyCode::Tab) {
         ui_state.show_panel = !ui_state.show_panel;
+        sfx.write(SfxEvent::Click);
     }
 }
 
-fn codec_header(root: &mut egui::Ui, state: &PrintState, ui_state: &mut UiState) {
+fn codec_header(
+    root: &mut egui::Ui,
+    state: &PrintState,
+    ui_state: &mut UiState,
+    sfx: &mut MessageWriter<SfxEvent>,
+) {
     egui::Panel::top("codec_header")
         .frame(
             egui::Frame::new()
@@ -163,6 +177,7 @@ fn codec_header(root: &mut egui::Ui, state: &PrintState, ui_state: &mut UiState)
                     let label = if ui_state.show_panel { "PANEL ▸" } else { "◂ PANEL" };
                     if ui.button(label).on_hover_text("Tab").clicked() {
                         ui_state.show_panel = !ui_state.show_panel;
+                        sfx.write(SfxEvent::Click);
                     }
                     if !state.toolpath.is_empty() {
                         ui.label(
@@ -213,13 +228,19 @@ fn alert_overlay(ctx: &egui::Context, alerts: &AlertState) {
         });
 }
 
-fn import_section(ui: &mut egui::Ui, state: &mut PrintState, ui_state: &mut UiState) {
+fn import_section(
+    ui: &mut egui::Ui,
+    state: &mut PrintState,
+    ui_state: &mut UiState,
+    sfx: &mut MessageWriter<SfxEvent>,
+) {
     // Touched unconditionally so wasm builds don't warn on the unused param.
     let _ = &mut *ui_state;
     ui.horizontal_wrapped(|ui| {
         for &(name, contents) in EXAMPLES {
             if ui.button(name).clicked() {
                 load_gcode_text(state, name.to_string(), contents);
+                sfx.write(SfxEvent::Beep);
             }
         }
     });
@@ -251,7 +272,12 @@ fn import_section(ui: &mut egui::Ui, state: &mut PrintState, ui_state: &mut UiSt
     );
 }
 
-fn playback_section(ui: &mut egui::Ui, state: &mut PrintState, layer_visuals: &LayerVisuals) {
+fn playback_section(
+    ui: &mut egui::Ui,
+    state: &mut PrintState,
+    layer_visuals: &LayerVisuals,
+    sfx: &mut MessageWriter<SfxEvent>,
+) {
     if state.toolpath.is_empty() {
         ui.label(egui::RichText::new("NO TOOLPATH LOADED").color(theme::TEXT_DIM));
         return;
@@ -261,10 +287,12 @@ fn playback_section(ui: &mut egui::Ui, state: &mut PrintState, layer_visuals: &L
         let label = if state.playing { "|| PAUSE" } else { "▶ PLAY" };
         if ui.button(label).clicked() {
             state.playing = !state.playing;
+            sfx.write(SfxEvent::Click);
         }
         if ui.button("↺ RESTART").clicked() {
             state.time = 0.0;
             state.playing = true;
+            sfx.write(SfxEvent::Click);
         }
     });
 
@@ -353,6 +381,7 @@ pub fn playback_ui(
     layer_visuals: Res<LayerVisuals>,
     alerts: Res<AlertState>,
     velocity: Res<crate::kinematics::HeadVelocity>,
+    mut sfx: MessageWriter<SfxEvent>,
     mut theme_applied: Local<bool>,
     #[cfg(target_arch = "wasm32")] mut firmware: ResMut<FirmwareState>,
 ) -> Result {
@@ -370,7 +399,7 @@ pub fn playback_ui(
             .max_rect(ctx.viewport_rect()),
     );
 
-    codec_header(&mut root, &state, &mut ui_state);
+    codec_header(&mut root, &state, &mut ui_state, &mut sfx);
 
     if ui_state.show_panel {
         egui::Panel::right("codec_panel")
@@ -405,10 +434,10 @@ pub fn playback_ui(
                 }
 
                 section(ui, "IMPORT", |ui| {
-                    import_section(ui, &mut state, &mut ui_state);
+                    import_section(ui, &mut state, &mut ui_state, &mut sfx);
                 });
                 section(ui, "PLAYBACK", |ui| {
-                    playback_section(ui, &mut state, &layer_visuals);
+                    playback_section(ui, &mut state, &layer_visuals, &mut sfx);
                 });
                 poppable_section(ui, "MOTION DRO", &mut ui_state.dro, |ui| {
                     crate::panels::dro::show(ui, &state, &velocity);
