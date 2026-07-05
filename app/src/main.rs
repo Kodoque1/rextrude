@@ -8,6 +8,7 @@ mod layers;
 mod loader;
 mod playback;
 mod printer_model;
+mod printer_rig;
 mod ui;
 
 #[cfg(target_arch = "wasm32")]
@@ -30,13 +31,17 @@ fn main() {
     .add_plugins(EguiPlugin::default())
     .init_resource::<playback::PrintState>()
     .init_resource::<kinematics::HeadVelocity>()
+    .init_resource::<printer_rig::PendingRigParts>()
     .init_resource::<layers::LayerVisuals>()
     .init_resource::<ui::UiState>()
     .add_systems(
         PreStartup,
         camera::setup_camera.before(EguiStartupSet::InitContexts),
     )
-    .add_systems(Startup, printer_model::setup_scene);
+    .add_systems(
+        Startup,
+        (printer_model::setup_scene, printer_rig::spawn_printer_scene),
+    );
 
     #[cfg(not(target_arch = "wasm32"))]
     app.add_systems(Startup, loader::autoload_from_env);
@@ -49,6 +54,7 @@ fn main() {
             playback::advance_time,
             layers::update_layer_meshes,
             kinematics::drive_kinematics,
+            printer_rig::discover_rig_parts,
             camera::orbit_camera,
         ),
     )

@@ -16,6 +16,10 @@ features = [
     # "bevy_audio" + "wav" are added in the audio phase; native builds need the
     # ALSA headers first: sudo apt install libasound2-dev
     "bevy_gltf",
+    # gltf scenes spawn through bevy_world_serialization, which panics on any
+    # component type missing from the reflection registry; this default
+    # feature registers them all automatically.
+    "reflect_auto_register",
     "bevy_winit",
     "bevy_render",
     "bevy_core_pipeline",
