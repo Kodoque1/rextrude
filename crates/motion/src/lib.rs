@@ -23,6 +23,9 @@ pub struct MotionEvent {
     pub e: f32,
     /// Whether the segment leading up to this event deposited material.
     pub extruding: bool,
+    /// 1-based source line of the gcode command that produced this event;
+    /// 0 when unknown (initial rest pose, firmware-emulator events).
+    pub line: u32,
 }
 
 /// A full toolpath: every waypoint the head visits over the course of a print.

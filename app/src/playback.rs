@@ -7,6 +7,9 @@ use motion::MotionEvent;
 #[derive(Resource, Default)]
 pub struct PrintState {
     pub toolpath: Vec<MotionEvent>,
+    /// Source gcode, one entry per line, for the stream panel. Empty when
+    /// the toolpath has no line mapping (e.g. the firmware backend).
+    pub source_lines: Vec<String>,
     pub time: f64,
     pub total_time: f64,
     pub playing: bool,
@@ -22,9 +25,15 @@ pub struct PrintState {
 }
 
 impl PrintState {
-    pub fn load(&mut self, file_name: String, toolpath: Vec<MotionEvent>) {
+    pub fn load(
+        &mut self,
+        file_name: String,
+        toolpath: Vec<MotionEvent>,
+        source_lines: Vec<String>,
+    ) {
         self.total_time = toolpath.last().map(|e| e.t).unwrap_or(0.0);
         self.toolpath = toolpath;
+        self.source_lines = source_lines;
         self.time = 0.0;
         self.playing = true;
         self.speed = 1.0;

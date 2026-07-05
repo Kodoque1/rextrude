@@ -51,6 +51,7 @@ impl FirmwareState {
         self.uart_log.clear();
 
         print_state.toolpath.clear();
+        print_state.source_lines.clear();
         print_state.toolpath.push(MotionEvent {
             t: 0.0,
             x: 0.0,
@@ -58,6 +59,7 @@ impl FirmwareState {
             z: 0.0,
             e: 0.0,
             extruding: false,
+            line: 0,
         });
         print_state.time = 0.0;
         print_state.total_time = 0.0;
@@ -104,6 +106,7 @@ pub fn drive_firmware(
             z: z as f32,
             e,
             extruding,
+            line: 0,
         });
     }
 

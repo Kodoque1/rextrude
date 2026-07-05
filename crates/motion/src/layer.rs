@@ -60,6 +60,7 @@ mod tests {
             z,
             e: 0.0,
             extruding: false,
+            line: 0,
         }
     }
 

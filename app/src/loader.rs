@@ -6,7 +6,8 @@ use crate::playback::PrintState;
 
 pub fn load_gcode_text(state: &mut PrintState, file_name: String, gcode: &str) {
     let toolpath = simulate(gcode, &PrinterConfig::default());
-    state.load(file_name, toolpath);
+    let source_lines = gcode.lines().map(str::to_string).collect();
+    state.load(file_name, toolpath, source_lines);
 }
 
 /// Dev aid (native only): `SIM_AUTOLOAD=<path|example name>` loads a gcode

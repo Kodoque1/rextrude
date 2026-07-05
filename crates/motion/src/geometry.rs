@@ -81,6 +81,7 @@ mod tests {
             z,
             e: if extruding { 1.0 } else { 0.0 },
             extruding,
+            line: 0,
         }
     }
 

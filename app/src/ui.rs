@@ -55,6 +55,7 @@ pub struct UiState {
     pub crt: bool,
     pub dro: Placement,
     pub progress: Placement,
+    pub gcode_stream: Placement,
 }
 
 impl Default for UiState {
@@ -66,6 +67,7 @@ impl Default for UiState {
             crt: true,
             dro: Placement::default(),
             progress: Placement::default(),
+            gcode_stream: Placement::default(),
         }
     }
 }
@@ -373,6 +375,9 @@ pub fn playback_ui(
             .exact_size(330.0)
             .resizable(false)
             .show(&mut root, |ui| {
+                egui::ScrollArea::vertical()
+                    .auto_shrink(false)
+                    .show(ui, |ui| {
                 ui.add_space(6.0);
 
                 #[cfg(target_arch = "wasm32")]
@@ -409,9 +414,13 @@ pub fn playback_ui(
                 poppable_section(ui, "PROGRESS", &mut ui_state.progress, |ui| {
                     crate::panels::progress::show(ui, &state, &layer_visuals);
                 });
+                poppable_section(ui, "G-CODE STREAM", &mut ui_state.gcode_stream, |ui| {
+                    crate::panels::gcode_stream::show(ui, &state);
+                });
                 section(ui, "SYSTEM", |ui| {
                     ui.checkbox(&mut ui_state.crt, "CRT SCANLINES");
                 });
+                    });
             });
     }
 
@@ -420,6 +429,9 @@ pub fn playback_ui(
     });
     floating_section(ctx, "PROGRESS", &mut ui_state.progress, |ui| {
         crate::panels::progress::show(ui, &state, &layer_visuals);
+    });
+    floating_section(ctx, "G-CODE STREAM", &mut ui_state.gcode_stream, |ui| {
+        crate::panels::gcode_stream::show(ui, &state);
     });
 
     alert_overlay(ctx, &alerts);
