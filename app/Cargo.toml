@@ -27,6 +27,8 @@ features = [
     "bevy_ui",
     "bevy_text",
     "bevy_sprite",
+    # split out of bevy_sprite in 0.19; without it sprites silently don't draw
+    "bevy_sprite_render",
     "bevy_gizmos",
     "bevy_log",
     "x11",

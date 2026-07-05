@@ -9,6 +9,7 @@ mod loader;
 mod playback;
 mod printer_model;
 mod printer_rig;
+mod psx;
 mod ui;
 
 #[cfg(target_arch = "wasm32")]
@@ -29,6 +30,7 @@ fn main() {
         ..default()
     }))
     .add_plugins(EguiPlugin::default())
+    .insert_resource(ClearColor(psx::FOG_COLOR))
     .init_resource::<playback::PrintState>()
     .init_resource::<kinematics::HeadVelocity>()
     .init_resource::<printer_rig::PendingRigParts>()
@@ -36,7 +38,14 @@ fn main() {
     .init_resource::<ui::UiState>()
     .add_systems(
         PreStartup,
-        camera::setup_camera.before(EguiStartupSet::InitContexts),
+        (
+            psx::disable_auto_egui_context,
+            psx::create_psx_canvas,
+            camera::setup_camera,
+            psx::setup_outer_camera,
+        )
+            .chain()
+            .before(EguiStartupSet::InitContexts),
     )
     .add_systems(
         Startup,
@@ -56,6 +65,7 @@ fn main() {
             kinematics::drive_kinematics,
             printer_rig::discover_rig_parts,
             camera::orbit_camera,
+            psx::fit_canvas,
         ),
     )
     .add_systems(bevy_egui::EguiPrimaryContextPass, ui::playback_ui);

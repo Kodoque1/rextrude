@@ -33,15 +33,16 @@ pub fn setup_scene(
 ) {
     commands.spawn((
         DirectionalLight {
-            illuminance: 7000.0,
+            color: Color::srgb(0.85, 1.0, 0.88),
+            illuminance: 5500.0,
             shadow_maps_enabled: false,
             ..default()
         },
         Transform::from_xyz(150.0, 300.0, -50.0).looking_at(Vec3::new(110.0, 0.0, 110.0), Vec3::Y),
     ));
     commands.insert_resource(GlobalAmbientLight {
-        color: Color::WHITE,
-        brightness: 400.0,
+        color: Color::srgb(0.75, 1.0, 0.82),
+        brightness: 300.0,
         ..default()
     });
 

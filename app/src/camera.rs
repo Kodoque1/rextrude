@@ -26,10 +26,15 @@ fn camera_transform(orbit: &OrbitCamera) -> Transform {
     Transform::from_translation(pos).looking_at(orbit.focus, Vec3::Y)
 }
 
-pub fn setup_camera(mut commands: Commands) {
+pub fn setup_camera(mut commands: Commands, canvas: Res<crate::psx::PsxCanvasImage>) {
     let orbit = OrbitCamera::default();
     let transform = camera_transform(&orbit);
-    commands.spawn((Camera3d::default(), transform, orbit));
+    commands.spawn((
+        Camera3d::default(),
+        transform,
+        orbit,
+        crate::psx::psx_camera_3d_bundle(&canvas),
+    ));
 }
 
 /// Right-mouse-drag orbits, scroll wheel zooms. Left click / drag is left
