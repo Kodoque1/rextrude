@@ -56,6 +56,7 @@ pub struct UiState {
     pub dro: Placement,
     pub progress: Placement,
     pub gcode_stream: Placement,
+    pub thermal: Placement,
 }
 
 impl Default for UiState {
@@ -68,6 +69,7 @@ impl Default for UiState {
             dro: Placement::default(),
             progress: Placement::default(),
             gcode_stream: Placement::default(),
+            thermal: Placement::default(),
         }
     }
 }
@@ -414,6 +416,9 @@ pub fn playback_ui(
                 poppable_section(ui, "PROGRESS", &mut ui_state.progress, |ui| {
                     crate::panels::progress::show(ui, &state, &layer_visuals);
                 });
+                poppable_section(ui, "THERMAL", &mut ui_state.thermal, |ui| {
+                    crate::panels::thermal::show(ui, &state);
+                });
                 poppable_section(ui, "G-CODE STREAM", &mut ui_state.gcode_stream, |ui| {
                     crate::panels::gcode_stream::show(ui, &state);
                 });
@@ -432,6 +437,9 @@ pub fn playback_ui(
     });
     floating_section(ctx, "G-CODE STREAM", &mut ui_state.gcode_stream, |ui| {
         crate::panels::gcode_stream::show(ui, &state);
+    });
+    floating_section(ctx, "THERMAL", &mut ui_state.thermal, |ui| {
+        crate::panels::thermal::show(ui, &state);
     });
 
     alert_overlay(ctx, &alerts);

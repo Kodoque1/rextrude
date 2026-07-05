@@ -30,3 +30,14 @@ pub struct MotionEvent {
 
 /// A full toolpath: every waypoint the head visits over the course of a print.
 pub type Toolpath = Vec<MotionEvent>;
+
+/// A point on the thermal timeline, timestamped in the same virtual seconds
+/// as [`MotionEvent`]. Targets of 0 mean "off / unknown".
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ThermalSample {
+    pub t: f64,
+    pub hotend_c: f32,
+    pub hotend_target: f32,
+    pub bed_c: f32,
+    pub bed_target: f32,
+}

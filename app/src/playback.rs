@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use motion::MotionEvent;
+use motion::{MotionEvent, ThermalSample};
 
 /// Holds the currently loaded toolpath and the playback cursor into it.
 /// Both the gcode-sim backend and (eventually) the firmware emulator backend
@@ -10,6 +10,8 @@ pub struct PrintState {
     /// Source gcode, one entry per line, for the stream panel. Empty when
     /// the toolpath has no line mapping (e.g. the firmware backend).
     pub source_lines: Vec<String>,
+    /// Thermal timeline aligned with `toolpath` time. Sorted by `t`.
+    pub thermal: Vec<ThermalSample>,
     pub time: f64,
     pub total_time: f64,
     pub playing: bool,
@@ -30,10 +32,12 @@ impl PrintState {
         file_name: String,
         toolpath: Vec<MotionEvent>,
         source_lines: Vec<String>,
+        thermal: Vec<ThermalSample>,
     ) {
         self.total_time = toolpath.last().map(|e| e.t).unwrap_or(0.0);
         self.toolpath = toolpath;
         self.source_lines = source_lines;
+        self.thermal = thermal;
         self.time = 0.0;
         self.playing = true;
         self.speed = 1.0;
@@ -55,6 +59,35 @@ impl PrintState {
             Err(0) => 0,
             Err(idx) => idx - 1,
         }
+    }
+
+    /// Interpolated thermal state at a given playback time (temperature is
+    /// a pure function of time, so scrubbing works transparently).
+    pub fn thermal_at(&self, time: f64) -> Option<ThermalSample> {
+        if self.thermal.is_empty() {
+            return None;
+        }
+        let idx = self.thermal.partition_point(|s| s.t <= time);
+        if idx == 0 {
+            return Some(self.thermal[0]);
+        }
+        let a = self.thermal[idx - 1];
+        let Some(b) = self.thermal.get(idx) else {
+            return Some(a);
+        };
+        let span = b.t - a.t;
+        let alpha = if span > f64::EPSILON {
+            ((time - a.t) / span).clamp(0.0, 1.0) as f32
+        } else {
+            0.0
+        };
+        Some(ThermalSample {
+            t: time,
+            hotend_c: a.hotend_c + (b.hotend_c - a.hotend_c) * alpha,
+            hotend_target: b.hotend_target,
+            bed_c: a.bed_c + (b.bed_c - a.bed_c) * alpha,
+            bed_target: b.bed_target,
+        })
     }
 
     /// Interpolated head position at the current playback time.

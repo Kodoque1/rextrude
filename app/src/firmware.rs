@@ -52,6 +52,7 @@ impl FirmwareState {
 
         print_state.toolpath.clear();
         print_state.source_lines.clear();
+        print_state.thermal.clear();
         print_state.toolpath.push(MotionEvent {
             t: 0.0,
             x: 0.0,
@@ -119,6 +120,21 @@ pub fn drive_firmware(
 
     firmware.hotend_c = hotendCelsius() as f32;
     firmware.bed_c = bedCelsius() as f32;
+
+    // Feed the thermal panel with live emulator temps (targets unknown -> 0).
+    let stale = print_state
+        .thermal
+        .last()
+        .is_none_or(|sample| now - sample.t >= 0.5);
+    if stale {
+        print_state.thermal.push(motion::ThermalSample {
+            t: now,
+            hotend_c: firmware.hotend_c,
+            hotend_target: 0.0,
+            bed_c: firmware.bed_c,
+            bed_target: 0.0,
+        });
+    }
 
     let new_uart = drainUartText();
     if !new_uart.is_empty() {

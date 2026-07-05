@@ -6,4 +6,4 @@ mod parser;
 mod planner;
 
 pub use parser::{parse_line, Command, HomeAxes, MoveArgs};
-pub use planner::{simulate, PrinterConfig};
+pub use planner::{simulate, simulate_full, PrinterConfig, Simulation};

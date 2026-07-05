@@ -1,13 +1,13 @@
 use bevy::prelude::*;
 use bevy::window::FileDragAndDrop;
-use gcode_sim::{simulate, PrinterConfig};
+use gcode_sim::{simulate_full, PrinterConfig};
 
 use crate::playback::PrintState;
 
 pub fn load_gcode_text(state: &mut PrintState, file_name: String, gcode: &str) {
-    let toolpath = simulate(gcode, &PrinterConfig::default());
+    let sim = simulate_full(gcode, &PrinterConfig::default());
     let source_lines = gcode.lines().map(str::to_string).collect();
-    state.load(file_name, toolpath, source_lines);
+    state.load(file_name, sim.toolpath, source_lines, sim.thermal);
 }
 
 /// Dev aid (native only): `SIM_AUTOLOAD=<path|example name>` loads a gcode
