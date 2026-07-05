@@ -53,6 +53,8 @@ pub struct UiState {
     pub backend: Backend,
     pub show_panel: bool,
     pub crt: bool,
+    pub dro: Placement,
+    pub progress: Placement,
 }
 
 impl Default for UiState {
@@ -62,6 +64,8 @@ impl Default for UiState {
             backend: Backend::default(),
             show_panel: true,
             crt: true,
+            dro: Placement::default(),
+            progress: Placement::default(),
         }
     }
 }
@@ -289,12 +293,62 @@ fn section(ui: &mut egui::Ui, title: &str, add_contents: impl FnOnce(&mut egui::
     ui.add_space(4.0);
 }
 
+/// A data section that can be popped out of the side panel into its own
+/// movable window. Renders the docked variant (with a POP OUT button);
+/// the floating variant is drawn by [`floating_section`] at context level.
+fn poppable_section(
+    ui: &mut egui::Ui,
+    title: &str,
+    placement: &mut Placement,
+    add_contents: impl FnOnce(&mut egui::Ui),
+) {
+    if *placement == Placement::Floating {
+        return;
+    }
+    egui::CollapsingHeader::new(egui::RichText::new(title).size(21.0).color(theme::TEXT))
+        .default_open(true)
+        .show(ui, |ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                if ui
+                    .small_button(egui::RichText::new("POP OUT").small())
+                    .clicked()
+                {
+                    *placement = Placement::Floating;
+                }
+            });
+            add_contents(ui);
+        });
+    ui.add_space(4.0);
+}
+
+/// The floating window twin of [`poppable_section`]; closing re-docks it.
+fn floating_section(
+    ctx: &egui::Context,
+    title: &str,
+    placement: &mut Placement,
+    add_contents: impl FnOnce(&mut egui::Ui),
+) {
+    if *placement != Placement::Floating {
+        return;
+    }
+    let mut open = true;
+    egui::Window::new(egui::RichText::new(title).size(20.0).color(theme::TEXT))
+        .open(&mut open)
+        .resizable(true)
+        .default_width(300.0)
+        .show(ctx, |ui| add_contents(ui));
+    if !open {
+        *placement = Placement::Docked;
+    }
+}
+
 pub fn playback_ui(
     mut contexts: EguiContexts,
     mut state: ResMut<PrintState>,
     mut ui_state: ResMut<UiState>,
     layer_visuals: Res<LayerVisuals>,
     alerts: Res<AlertState>,
+    velocity: Res<crate::kinematics::HeadVelocity>,
     mut theme_applied: Local<bool>,
     #[cfg(target_arch = "wasm32")] mut firmware: ResMut<FirmwareState>,
 ) -> Result {
@@ -349,11 +403,24 @@ pub fn playback_ui(
                 section(ui, "PLAYBACK", |ui| {
                     playback_section(ui, &mut state, &layer_visuals);
                 });
+                poppable_section(ui, "MOTION DRO", &mut ui_state.dro, |ui| {
+                    crate::panels::dro::show(ui, &state, &velocity);
+                });
+                poppable_section(ui, "PROGRESS", &mut ui_state.progress, |ui| {
+                    crate::panels::progress::show(ui, &state, &layer_visuals);
+                });
                 section(ui, "SYSTEM", |ui| {
                     ui.checkbox(&mut ui_state.crt, "CRT SCANLINES");
                 });
             });
     }
+
+    floating_section(ctx, "MOTION DRO", &mut ui_state.dro, |ui| {
+        crate::panels::dro::show(ui, &state, &velocity);
+    });
+    floating_section(ctx, "PROGRESS", &mut ui_state.progress, |ui| {
+        crate::panels::progress::show(ui, &state, &layer_visuals);
+    });
 
     alert_overlay(ctx, &alerts);
 

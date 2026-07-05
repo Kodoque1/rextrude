@@ -5,6 +5,7 @@ mod camera;
 mod coords;
 mod kinematics;
 mod layers;
+mod panels;
 mod loader;
 mod playback;
 mod printer_model;
