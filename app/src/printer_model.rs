@@ -1,3 +1,4 @@
+use bevy::image::{ImageLoaderSettings, ImageSampler};
 use bevy::prelude::*;
 
 use crate::kinematics::{BedRig, CarriageRig, GantryRig, LeadScrew};
@@ -30,6 +31,7 @@ pub fn setup_scene(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>,
 ) {
     commands.spawn((
         DirectionalLight {
@@ -47,10 +49,19 @@ pub fn setup_scene(
     });
 
     // Base plate, sized for the full bed travel envelope (world Z -110..330).
+    // The R&D floor texture (tools/gen_textures.py) maps 1:1 onto it; keep
+    // nearest sampling for the PSX pixel look.
+    let floor_texture: Handle<Image> = asset_server.load_with_settings(
+        "textures/floor.png",
+        |settings: &mut ImageLoaderSettings| {
+            settings.sampler = ImageSampler::nearest();
+        },
+    );
     commands.spawn((
         Mesh3d(meshes.add(Plane3d::default().mesh().size(380.0, 560.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.10, 0.10, 0.12),
+            base_color_texture: Some(floor_texture),
+            perceptual_roughness: 0.95,
             ..default()
         })),
         Transform::from_xyz(BED_SIZE / 2.0, -14.0, NOZZLE_Z),

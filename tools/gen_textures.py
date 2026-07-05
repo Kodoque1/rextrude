@@ -250,9 +250,15 @@ def make_floor(size=512):
     img = to_image(arr.astype(np.uint8))
     d = ImageDraw.Draw(img)
 
-    # floor stencils, inside the border where the plate has room
-    stencil(d, ((x0 + x1) // 2, y1 - band - 26), "BAY 03", 30, fill=(150, 154, 146))
-    stencil(d, ((x0 + x1) // 2, y1 - band - 8), "FAB LINE - AUTHORIZED ONLY", 13, fill=(120, 124, 116))
+    # floor stencils near the operator edge (low machine-Y / image top),
+    # rotated so they read upright from the default operator-side camera.
+    label = Image.new("RGBA", (300, 56), (0, 0, 0, 0))
+    ld = ImageDraw.Draw(label)
+    stencil(ld, (150, 18), "BAY 03", 30, fill=(150, 154, 146))
+    stencil(ld, (150, 44), "FAB LINE - AUTHORIZED ONLY", 13, fill=(120, 124, 116))
+    label = label.rotate(180)
+    lx, ly = px(110, -95)
+    img.paste(label, (lx - 150, ly - 28), label)
 
     # worn paint: multiply everything by mild noise
     arr = np.asarray(img, dtype=np.float64)

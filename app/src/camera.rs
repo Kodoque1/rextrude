@@ -14,7 +14,10 @@ impl Default for OrbitCamera {
         Self {
             focus: Vec3::new(110.0, 40.0, 110.0),
             radius: 380.0,
-            yaw: -0.7,
+            // Start on the operator side (machine -Y): hotend, decals and
+            // the bed's hazard trim face this way; the X-beam sits behind
+            // the carriage like on a real i3.
+            yaw: std::f32::consts::PI - 1.05,
             pitch: 0.55,
         }
     }
