@@ -59,12 +59,22 @@ def to_blender(p):
 
 
 class Geo:
-    """Accumulates verts/faces/per-face atlas region for one mesh object."""
+    """Accumulates verts/faces/per-face atlas region for one mesh object,
+    plus labeled machine-space AABBs of every primitive for the design
+    validator (`validate_design`)."""
 
     def __init__(self):
         self.verts = []
         self.faces = []
         self.face_mat = []
+        self.parts = []  # (label, (lo_x,lo_y,lo_z), (hi_x,hi_y,hi_z)) machine coords
+
+    def _record(self, label, center, size):
+        self.parts.append((
+            label,
+            tuple(c - s / 2.0 for c, s in zip(center, size)),
+            tuple(c + s / 2.0 for c, s in zip(center, size)),
+        ))
 
     def _push(self, verts, faces, mats):
         base = len(self.verts)
@@ -73,9 +83,10 @@ class Geo:
             self.faces.append(tuple(base + i for i in face))
             self.face_mat.append(mat)
 
-    def add_box(self, center, size, mat, mat_top=None, mat_front=None):
+    def add_box(self, center, size, mat, mat_top=None, mat_front=None, label=""):
         """Axis-aligned box in machine coords. `mat_front` is the machine
         -Y face (the one facing the operator/camera)."""
+        self._record(label, center, size)
         cx, cy, cz = to_blender(center)
         hx, hy, hz = size[0] / 2.0, size[1] / 2.0, size[2] / 2.0
         verts = [
@@ -103,9 +114,10 @@ class Geo:
         ]
         self._push(verts, faces, mats)
 
-    def add_chamfered_box(self, center, size, chamfer, mat, mat_top=None, mat_front=None):
+    def add_chamfered_box(self, center, size, chamfer, mat, mat_top=None, mat_front=None, label=""):
         """Box with the four vertical edges chamfered (octagonal prism).
         10 faces; used on hero parts for the machined-hardware read."""
+        self._record(label, center, size)
         cx, cy, cz = to_blender(center)
         hx, hy, hz = size[0] / 2.0, size[1] / 2.0, size[2] / 2.0
         c = min(chamfer, hx * 0.9, hy * 0.9)
@@ -124,8 +136,9 @@ class Geo:
             mats.append(mat_front if (mat_front is not None and i == 4) else mat)
         self._push(verts, faces, mats)
 
-    def add_cylinder(self, center, radius, height, mat, segs=6):
+    def add_cylinder(self, center, radius, height, mat, segs=6, label=""):
         """Vertical low-poly cylinder in machine coords."""
+        self._record(label, center, (2 * radius, 2 * radius, height))
         cx, cy, cz = to_blender(center)
         bottom, top = cz - height / 2.0, cz + height / 2.0
         verts = []
@@ -141,8 +154,9 @@ class Geo:
         faces.append(tuple(range(segs, 2 * segs)))          # top cap
         self._push(verts, faces, [mat] * len(faces))
 
-    def add_cone(self, tip, radius, height, mat, segs=6):
+    def add_cone(self, tip, radius, height, mat, segs=6, label=""):
         """Cone with the tip at `tip` (machine coords), opening upward."""
+        self._record(label, (tip[0], tip[1], tip[2] + height / 2.0), (2 * radius, 2 * radius, height))
         cx, cy, cz = to_blender(tip)
         verts = [(cx, cy, cz)]
         for i in range(segs):
@@ -226,77 +240,229 @@ def make_material():
 def build_frame(mat):
     g = Geo()
     # Y rails + end crossmembers + feet (the chassis the bed rides on).
+    # Crossmembers sit 0.5mm below the rail plane and feet poke 0.2mm into
+    # the rails: attachments overlap in volume instead of sharing render
+    # planes (see validate_design's z-fight rule).
     for x in (60, 160):
-        g.add_box((x, 110, -10), (12, 470, 6), "steel")
+        g.add_box((x, 110, -14), (12, 470, 6), "steel", label="rail")
     for y in (-90, 315):
-        g.add_box((110, y, -10), (140, 18, 6), "steel")
+        g.add_box((110, y, -14.5), (140, 18, 6), "steel", label="crossmember")
     for x in (60, 160):
         for y in (-100, 320):
-            g.add_box((x, y, -17), (16, 20, 8), "rubber")
+            g.add_box((x, y, -20.8), (16, 20, 8), "rubber", label="foot")
     # Y belt + rear Y stepper.
-    g.add_box((110, 112, -9), (6, 440, 2), "rubber")
-    g.add_box((110, 338, -4), (42, 42, 34), "olive")
+    g.add_box((110, 112, -13), (6, 440, 2), "rubber", label="y_belt")
+    g.add_box((110, 358, -4), (30, 30, 30), "olive", label="y_stepper")
     # Uprights + top crossbar, in the gantry plane (machine y = 138).
     for x in (-45, 265):
-        g.add_chamfered_box((x, 138, 117), (14, 14, 260), 3, "gunmetal")
-    g.add_chamfered_box((110, 138, 254), (338, 14, 14), 3, "gunmetal")
+        g.add_chamfered_box((x, 138, 117), (14, 14, 260), 3, "gunmetal", label="upright")
+    g.add_chamfered_box((110, 138, 254), (338, 14, 14), 3, "gunmetal", label="crossbar")
     # Z stepper blocks at the screw bases.
     for x in (-22, 242):
-        g.add_box((x, 138, 2), (34, 34, 30), "olive")
+        g.add_box((x, 138, 2.2), (34, 34, 30), "olive", label="z_stepper")
     # PSU box off to the side; unit label faces the operator.
-    g.add_chamfered_box((262, 250, 15), (60, 100, 58), 4, "olive", mat_front="psu_decal")
-    return build_object("Frame_Static", g, mat)
+    g.add_chamfered_box((262, 250, 15), (60, 100, 58), 4, "olive", mat_front="psu_decal", label="psu")
+    build_object("Frame_Static", g, mat)
+    return g
 
 
 def build_gantry(mat):
     g = Geo()
-    g.add_chamfered_box((110, 138, 42), (330, 16, 16), 3, "gunmetal")  # X beam
+    g.add_chamfered_box((110, 138, 42), (330, 16, 16), 3, "gunmetal", label="beam")
     # hazard trim strip along the beam's lower front edge (0.5mm proud)
-    g.add_box((110, 129.2, 35.5), (300, 1.5, 5), "hazard")
+    g.add_box((110, 129.2, 35.5), (300, 1.5, 5), "hazard", label="trim")
     for x in (-45, 265):                                  # Z carriage brackets
-        g.add_box((x, 138, 42), (30, 30, 44), "gunmetal")
+        g.add_box((x, 138, 42), (30, 30, 44), "gunmetal", label="bracket")
     for x in (-22, 242):                                  # brass lead nuts
-        g.add_box((x, 138, 42), (14, 14, 18), "brass")
-    g.add_box((-45, 138, 74), (28, 28, 24), "olive")      # X stepper
-    g.add_box((110, 129.5, 46), (300, 2, 5), "rubber")    # X belt
-    return build_object("Gantry_X", g, mat)
+        g.add_box((x, 138, 42), (14, 14, 18), "brass", label="nut")
+    g.add_box((-45, 138, 74), (28, 28, 24), "olive", label="x_stepper")
+    g.add_box((110, 129.5, 46), (300, 2, 5), "rubber", label="x_belt")
+    build_object("Gantry_X", g, mat)
+    return g
 
 
 def build_carriage(mat):
     g = Geo()
-    g.add_chamfered_box((0, 16, 38), (44, 8, 40), 2, "olive")  # carriage plate
+    g.add_chamfered_box((0, 14, 38), (44, 8, 40), 2, "olive", label="plate")
     for i in range(5):                                    # heatsink fins
-        g.add_box((0, 0, 17 + i * 4), (22, 22, 2.6), "alu")
+        g.add_box((0, 0, 17 + i * 4), (22, 22, 2.6), "alu", label="fin")
     # heater block, warning label toward the operator
-    g.add_box((0, 0, 10), (16, 12, 9), "dark_steel", mat_front="caution_decal")
-    g.add_cone((0, 0, 0), 2.5, 5, "brass")                # nozzle, tip = origin
-    g.add_box((0, -13, 24), (24, 8, 24), "olive")         # fan shroud
-    g.add_box((0, 16, 62), (18, 10, 8), "cable")          # cable box
-    return build_object("Carriage_X", g, mat)
+    g.add_box((0, 0, 10), (16, 12, 9), "dark_steel", mat_front="caution_decal", label="heater")
+    g.add_cone((0, 0, 0), 2.5, 5, "brass", label="nozzle")  # nozzle, tip = origin
+    g.add_box((0, -13, 24), (24, 8, 24), "olive", label="shroud")
+    g.add_box((0, 14, 62), (18, 10, 8), "cable", label="cable_box")
+    build_object("Carriage_X", g, mat)
+    return g
 
 
 def build_bed(mat):
     g = Geo()
-    g.add_chamfered_box((110, 110, -2.5), (220, 220, 5), 4, "dark_steel", mat_top="bed_top")
-    g.add_box((110, 110, -8), (160, 240, 6), "dark_steel")     # Y carriage
+    g.add_chamfered_box((110, 110, -2.5), (220, 220, 5), 4, "dark_steel", mat_top="bed_top", label="slab")
+    g.add_box((110, 110, -8), (160, 240, 6), "dark_steel", label="bed_carriage")
     # hazard trim along the bed slab's front edge
-    g.add_box((110, -1.0, -2.5), (220, 1.5, 4.5), "hazard")
+    g.add_box((110, -1.0, -2.5), (220, 1.5, 4.5), "hazard", label="trim")
     # CAUTION placard hanging off the carriage front
-    g.add_box((110, -13, -13), (44, 2, 14), "dark_steel", mat_front="caution_decal")
+    g.add_box((110, -13, -8), (44, 2, 8), "dark_steel", mat_front="caution_decal", label="placard")
     for x in (25, 195):                                        # leveling knobs
         for y in (25, 195):
-            g.add_cylinder((x, y, -11), 7, 5, "rubber", segs=6)
-    g.add_box((5, 5, 1), (10, 10, 2), "orange")   # orange notch = gcode origin
-    g.add_box((110, 224, -6), (30, 8, 4), "cable")             # cable strip
-    return build_object("Bed_Y", g, mat)
+            g.add_cylinder((x, y, -11), 7, 5, "rubber", segs=6, label="knob")
+    g.add_box((5, 5, 1), (10, 10, 2), "orange", label="notch")
+    g.add_box((110, 224, -6), (30, 8, 4), "cable", label="cable_strip")
+    build_object("Bed_Y", g, mat)
+    return g
 
 
-def build_lead_screw(name, x, mat):
+SCREW_POSITIONS = {"LeadScrew_L": (-22, 138, 132), "LeadScrew_R": (242, 138, 132)}
+
+
+def build_lead_screw(name, mat):
     # Bare 6-sided cylinder: the brushed `steel` region rotating with the
     # mesh is what sells the spin (the old fin boxes were silhouette noise).
     g = Geo()
-    g.add_cylinder((0, 0, 0), 3.5, 230, "steel", segs=6)
-    return build_object(name, g, mat, location=to_blender((x, 138, 132)))
+    g.add_cylinder((0, 0, 0), 3.5, 230, "steel", segs=6, label="screw")
+    build_object(name, g, mat, location=to_blender(SCREW_POSITIONS[name]))
+    return g
+
+
+
+# ------------------------------------------------------ design validation --
+
+# gcode travel envelope the machine must survive (mm).
+TRAVEL = ((0.0, 220.0), (0.0, 220.0), (0.0, 60.0))
+# The nozzle lane: carriage local coords sit at machine y = 110.
+NOZZLE_LANE_Y = 110.0
+MAX_TRIANGLES = 5000
+# Parts expected to come in mirror pairs about the machine center plane.
+SYMMETRIC_LABELS = {"upright", "z_stepper", "bracket", "nut", "rail", "foot", "knob"}
+SYMMETRY_PLANE_X = 110.0
+
+
+def _shift(part, d):
+    label, lo, hi = part
+    return (label, tuple(a + b for a, b in zip(lo, d)), tuple(a + b for a, b in zip(hi, d)))
+
+
+def _overlap(a, b, tol=0.01):
+    _, alo, ahi = a
+    _, blo, bhi = b
+    return all(alo[i] + tol < bhi[i] and blo[i] + tol < ahi[i] for i in range(3))
+
+
+def _collisions(errors, when, group_a, group_b):
+    for pa in group_a:
+        for pb in group_b:
+            if _overlap(pa, pb):
+                errors.append(f"collision {when}: {pa[0]} {pa[1]}..{pa[2]} vs {pb[0]} {pb[1]}..{pb[2]}")
+
+
+def validate_design(geos):
+    """Design-by-contract checks over the authored parts; exits on failure.
+
+    Guards the invariants the app's kinematics rely on (nozzle-at-origin,
+    bed-top-at-zero, screws spinning about their own axis), sweeps the
+    travel envelope for collisions, and rejects same-facing coplanar
+    render planes (z-fighting) and budget overruns.
+    """
+    errors = []
+    frame = geos["Frame_Static"].parts
+    gantry = geos["Gantry_X"].parts
+    carriage = geos["Carriage_X"].parts
+    bed = geos["Bed_Y"].parts
+    screws = [
+        _shift(part, SCREW_POSITIONS[name])
+        for name in ("LeadScrew_L", "LeadScrew_R")
+        for part in geos[name].parts
+    ]
+
+    # --- kinematic contract ---------------------------------------------
+    cgeo = geos["Carriage_X"]
+    if not any(all(abs(c) < 1e-6 for c in v) for v in cgeo.verts):
+        errors.append("carriage: nozzle tip vertex is not at the local origin")
+    if min(v[2] for v in cgeo.verts) < -1e-6:
+        errors.append("carriage: geometry extends below the nozzle tip")
+
+    slab = next(p for p in bed if p[0] == "slab")
+    if any(abs(a - b) > 1e-3 for a, b in zip(slab[1] + slab[2], (0, 0, -5, 220, 220, 0))):
+        errors.append(f"bed: slab must span (0,0,-5)..(220,220,0), got {slab[1]}..{slab[2]}")
+    bed_top_overhang = max(hi[2] for _, _, hi in bed)
+    if bed_top_overhang > 2.01:
+        errors.append(f"bed: parts rise {bed_top_overhang}mm above the print surface")
+
+    for name in ("LeadScrew_L", "LeadScrew_R"):
+        sgeo = geos[name]
+        r = max(max(abs(v[0]), abs(v[1])) for v in sgeo.verts)
+        if r > 4.0:
+            errors.append(f"{name}: geometry {r:.1f}mm off its spin axis (must be centered)")
+        if all(abs(c) < 1e-6 for c in SCREW_POSITIONS[name][:2]):
+            errors.append(f"{name}: node translation looks baked into geometry")
+
+    lx, rx = SCREW_POSITIONS["LeadScrew_L"][0], SCREW_POSITIONS["LeadScrew_R"][0]
+    if abs((lx + rx) / 2.0 - SYMMETRY_PLANE_X) > 0.1:
+        errors.append("lead screws are not mirrored about the machine center plane")
+
+    gantry_low = min(lo[2] for _, lo, _ in gantry)
+    if gantry_low < 5.0:
+        errors.append(f"gantry: reaches z={gantry_low}mm at the gcode z=0 pose (bed clearance)")
+
+    # --- travel-envelope collision sweep ---------------------------------
+    static = frame + screws
+    for gx in TRAVEL[0]:
+        for gy in TRAVEL[1]:
+            for gz in TRAVEL[2]:
+                when = f"at gcode ({gx:.0f},{gy:.0f},{gz:.0f})"
+                carr_w = [_shift(p, (gx, NOZZLE_LANE_Y, gz)) for p in carriage]
+                bed_w = [_shift(p, (0.0, NOZZLE_LANE_Y - gy, 0.0)) for p in bed]
+                gantry_w = [_shift(p, (0.0, 0.0, gz)) for p in gantry]
+                _collisions(errors, when, carr_w, static)
+                _collisions(errors, when, bed_w, static)
+                _collisions(errors, when, bed_w, gantry_w)
+                _collisions(errors, when, carr_w, gantry_w)
+                # the nozzle is allowed to touch the print surface
+                _collisions(errors, when, [p for p in carr_w if p[0] != "nozzle"], bed_w)
+
+    # --- z-fight guard: same-facing coplanar planes with overlap ---------
+    for obj_name, geo in geos.items():
+        parts = geo.parts
+        for i in range(len(parts)):
+            for j in range(i + 1, len(parts)):
+                (la, alo, ahi), (lb, blo, bhi) = parts[i], parts[j]
+                for axis in range(3):
+                    others = [k for k in range(3) if k != axis]
+                    flat_overlap = all(
+                        alo[k] + 0.01 < bhi[k] and blo[k] + 0.01 < ahi[k] for k in others
+                    )
+                    if not flat_overlap:
+                        continue
+                    if abs(ahi[axis] - bhi[axis]) < 0.01 or abs(alo[axis] - blo[axis]) < 0.01:
+                        errors.append(
+                            f"z-fight risk in {obj_name}: {la} and {lb} share a same-facing plane on axis {axis}"
+                        )
+
+    # --- symmetry about the machine center plane --------------------------
+    for obj_name, geo in geos.items():
+        sym = [p for p in geo.parts if p[0] in SYMMETRIC_LABELS]
+        for label, lo, hi in sym:
+            cx = (lo[0] + hi[0]) / 2.0
+            if abs(cx - SYMMETRY_PLANE_X) < 0.1:
+                continue
+            mirror_cx = 2.0 * SYMMETRY_PLANE_X - cx
+            if not any(
+                p[0] == label and abs((p[1][0] + p[2][0]) / 2.0 - mirror_cx) < 0.1
+                for p in sym
+            ):
+                errors.append(f"{obj_name}: {label} at x={cx:.1f} has no mirror twin about x={SYMMETRY_PLANE_X}")
+
+    # --- budgets ----------------------------------------------------------
+    tris = sum(len(f) - 2 for g in geos.values() for f in g.faces)
+    if tris > MAX_TRIANGLES:
+        errors.append(f"triangle budget exceeded: {tris} > {MAX_TRIANGLES}")
+
+    if errors:
+        print(f"DESIGN VALIDATION FAILED ({len(errors)} violations):")
+        for e in errors:
+            print(f"  - {e}")
+        sys.exit(1)
+    print(f"design validation OK ({tris} tris, {sum(len(g.parts) for g in geos.values())} parts)")
 
 
 # ------------------------------------------------------------------ main --
@@ -341,12 +507,15 @@ def main():
         bpy.data.objects.remove(obj, do_unlink=True)
 
     mat = make_material()
-    build_frame(mat)
-    build_gantry(mat)
-    build_carriage(mat)
-    build_bed(mat)
-    build_lead_screw("LeadScrew_L", -22, mat)
-    build_lead_screw("LeadScrew_R", 242, mat)
+    geos = {
+        "Frame_Static": build_frame(mat),
+        "Gantry_X": build_gantry(mat),
+        "Carriage_X": build_carriage(mat),
+        "Bed_Y": build_bed(mat),
+        "LeadScrew_L": build_lead_screw("LeadScrew_L", mat),
+        "LeadScrew_R": build_lead_screw("LeadScrew_R", mat),
+    }
+    validate_design(geos)
 
     bpy.ops.export_scene.gltf(filepath=out, export_format="GLB", export_yup=True)
     validate_glb(out)
