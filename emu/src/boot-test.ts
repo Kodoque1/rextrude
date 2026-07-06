@@ -14,7 +14,11 @@ const FLASH_SIZE = 256 * 1024;
 const hexPath = fileURLToPath(new URL('../../assets/firmware/marlin_ramps14.hex', import.meta.url));
 const hexText = readFileSync(hexPath, 'utf-8');
 const flashBytes = parseIntelHex(hexText, FLASH_SIZE);
-const progMem = new Uint16Array(flashBytes.buffer, flashBytes.byteOffset, flashBytes.byteLength / 2);
+const progMem = new Uint16Array(
+  flashBytes.buffer,
+  flashBytes.byteOffset,
+  flashBytes.byteLength / 2,
+);
 
 const mega = createMega2560(progMem);
 const { cpu, usart0, adc } = mega;

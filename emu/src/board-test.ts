@@ -15,7 +15,11 @@ const FLASH_SIZE = 256 * 1024;
 const hexPath = fileURLToPath(new URL('../../assets/firmware/marlin_ramps14.hex', import.meta.url));
 const hexText = readFileSync(hexPath, 'utf-8');
 const flashBytes = parseIntelHex(hexText, FLASH_SIZE);
-const progMem = new Uint16Array(flashBytes.buffer, flashBytes.byteOffset, flashBytes.byteLength / 2);
+const progMem = new Uint16Array(
+  flashBytes.buffer,
+  flashBytes.byteOffset,
+  flashBytes.byteLength / 2,
+);
 
 const mega = createMega2560(progMem);
 const { cpu, usart0, adc } = mega;
@@ -69,11 +73,15 @@ console.log(`\nsteps recorded: ${board.stepEvents.length}`);
 console.log('position after G28:', board.position);
 
 if (!sinceLastOk.includes('\nok')) {
-  console.error('FAIL: G28 never completed (no "ok" within 10s virtual time) -- likely stuck waiting on an endstop');
+  console.error(
+    'FAIL: G28 never completed (no "ok" within 10s virtual time) -- likely stuck waiting on an endstop',
+  );
   process.exit(1);
 }
 
-const settled = ['X', 'Y', 'Z'].every((axis) => Math.abs(board.position[axis as 'X' | 'Y' | 'Z']) < 1);
+const settled = ['X', 'Y', 'Z'].every(
+  (axis) => Math.abs(board.position[axis as 'X' | 'Y' | 'Z']) < 1,
+);
 if (!settled) {
   console.error('FAIL: axes did not end up near 0 after homing', board.position);
   process.exit(1);

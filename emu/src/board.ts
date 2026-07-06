@@ -165,7 +165,8 @@ export class RampsBoard {
 
     if (axis === 'X' || axis === 'Y' || axis === 'Z') {
       const triggered = this.position[axis] <= this.endstopMargin;
-      const pin = axis === 'X' ? RAMPS_PINS.X_MIN : axis === 'Y' ? RAMPS_PINS.Y_MIN : RAMPS_PINS.Z_MIN;
+      const pin =
+        axis === 'X' ? RAMPS_PINS.X_MIN : axis === 'Y' ? RAMPS_PINS.Y_MIN : RAMPS_PINS.Z_MIN;
       this.setEndstopPin(pin, triggered);
     }
   }

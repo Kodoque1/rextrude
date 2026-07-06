@@ -36,9 +36,7 @@ def value_noise(w, h, octaves=((8, 1.0), (4, 0.5), (2, 0.25))):
     for cell, amp in octaves:
         gw, gh = max(1, w // cell), max(1, h // cell)
         grid = rng.random((gh, gw))
-        img = Image.fromarray((grid * 255).astype(np.uint8)).resize(
-            (w, h), Image.BILINEAR
-        )
+        img = Image.fromarray((grid * 255).astype(np.uint8)).resize((w, h), Image.BILINEAR)
         out += amp * np.asarray(img, dtype=np.float64) / 255.0
         total += amp
     return out / total
@@ -239,7 +237,10 @@ def make_floor(size=512):
     arr = np.asarray(img, dtype=np.float64).copy()
     ys, xs = np.mgrid[0:size, 0:size]
     frame = (
-        (xs >= x0) & (xs < x1) & (ys >= y0) & (ys < y1)
+        (xs >= x0)
+        & (xs < x1)
+        & (ys >= y0)
+        & (ys < y1)
         & ~((xs >= x0 + band) & (xs < x1 - band) & (ys >= y0 + band) & (ys < y1 - band))
     )
     stripes = ((xs - ys) // 12) % 2 == 0

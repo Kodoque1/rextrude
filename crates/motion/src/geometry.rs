@@ -13,7 +13,8 @@ impl MeshData {
     fn push_quad(&mut self, a: [f32; 3], b: [f32; 3], c: [f32; 3], d: [f32; 3], normal: [f32; 3]) {
         let base = self.positions.len() as u32;
         self.positions.extend_from_slice(&[a, b, c, d]);
-        self.normals.extend_from_slice(&[normal, normal, normal, normal]);
+        self.normals
+            .extend_from_slice(&[normal, normal, normal, normal]);
         self.indices
             .extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
     }
@@ -66,20 +67,56 @@ pub fn build_ribbon_mesh(events: &[MotionEvent], width: f32, thickness: f32) -> 
         let cur_bot_plus = [cur.x + nx, cur.y + ny, z_bot];
         let cur_bot_minus = [cur.x - nx, cur.y - ny, z_bot];
 
-        mesh.push_quad(prev_top_plus, prev_top_minus, cur_top_minus, cur_top_plus, [0.0, 0.0, 1.0]);
-        mesh.push_quad(cur_bot_plus, cur_bot_minus, prev_bot_minus, prev_bot_plus, [0.0, 0.0, -1.0]);
+        mesh.push_quad(
+            prev_top_plus,
+            prev_top_minus,
+            cur_top_minus,
+            cur_top_plus,
+            [0.0, 0.0, 1.0],
+        );
+        mesh.push_quad(
+            cur_bot_plus,
+            cur_bot_minus,
+            prev_bot_minus,
+            prev_bot_plus,
+            [0.0, 0.0, -1.0],
+        );
 
-        mesh.push_quad(prev_top_plus, cur_top_plus, cur_bot_plus, prev_bot_plus, [px, py, 0.0]);
-        mesh.push_quad(cur_top_minus, prev_top_minus, prev_bot_minus, cur_bot_minus, [-px, -py, 0.0]);
+        mesh.push_quad(
+            prev_top_plus,
+            cur_top_plus,
+            cur_bot_plus,
+            prev_bot_plus,
+            [px, py, 0.0],
+        );
+        mesh.push_quad(
+            cur_top_minus,
+            prev_top_minus,
+            prev_bot_minus,
+            cur_bot_minus,
+            [-px, -py, 0.0],
+        );
 
         // End caps at extrusion-run boundaries. A zero-length segment mid-run
         // is skipped above without special-casing the cap here: the gap it
         // leaves is invisible since the neighboring boxes still overlap it.
         if !prev.extruding {
-            mesh.push_quad(prev_top_plus, prev_bot_plus, prev_bot_minus, prev_top_minus, [-ux, -uy, 0.0]);
+            mesh.push_quad(
+                prev_top_plus,
+                prev_bot_plus,
+                prev_bot_minus,
+                prev_top_minus,
+                [-ux, -uy, 0.0],
+            );
         }
         if events.get(i + 2).is_none_or(|next| !next.extruding) {
-            mesh.push_quad(cur_top_minus, cur_bot_minus, cur_bot_plus, cur_top_plus, [ux, uy, 0.0]);
+            mesh.push_quad(
+                cur_top_minus,
+                cur_bot_minus,
+                cur_bot_plus,
+                cur_top_plus,
+                [ux, uy, 0.0],
+            );
         }
     }
 

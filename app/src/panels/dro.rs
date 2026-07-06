@@ -26,11 +26,7 @@ pub fn show(ui: &mut egui::Ui, state: &PrintState, velocity: &HeadVelocity) {
                     .size(22.0)
                     .color(theme::TEXT),
             );
-            ui.label(
-                egui::RichText::new("mm")
-                    .monospace()
-                    .color(theme::TEXT_DIM),
-            );
+            ui.label(egui::RichText::new("mm").monospace().color(theme::TEXT_DIM));
         });
     }
 

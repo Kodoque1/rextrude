@@ -12,8 +12,8 @@ mod coords;
 mod file_picker;
 mod kinematics;
 mod layers;
-mod panels;
 mod loader;
+mod panels;
 mod playback;
 mod printer_model;
 mod printer_rig;
@@ -72,8 +72,7 @@ fn main() {
     app.add_systems(Startup, audio::setup)
         .add_systems(Update, (audio::play_sfx, audio::stepper_audio));
 
-    app
-    .add_systems(
+    app.add_systems(
         Update,
         (
             loader::handle_file_drop,
@@ -93,7 +92,10 @@ fn main() {
     #[cfg(target_arch = "wasm32")]
     {
         app.init_resource::<firmware::FirmwareState>();
-        app.add_systems(Update, (wasm_drop::poll_dropped_file, firmware::drive_firmware));
+        app.add_systems(
+            Update,
+            (wasm_drop::poll_dropped_file, firmware::drive_firmware),
+        );
     }
 
     app.run();

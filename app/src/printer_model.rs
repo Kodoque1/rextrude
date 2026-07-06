@@ -199,6 +199,10 @@ pub fn setup_scene(
                 MeshMaterial3d(dark_steel),
                 Transform::from_xyz(BED_SIZE / 2.0, -BED_THICKNESS - 3.0, BED_SIZE / 2.0),
             ));
-            bed.spawn((PrintedLayerRoot, Transform::default(), Visibility::default()));
+            bed.spawn((
+                PrintedLayerRoot,
+                Transform::default(),
+                Visibility::default(),
+            ));
         });
 }

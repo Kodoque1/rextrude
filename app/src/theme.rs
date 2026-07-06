@@ -87,7 +87,10 @@ pub fn draw_scanlines(ctx: &egui::Context) {
     let mut y = rect.top();
     while y < rect.bottom() {
         painter.rect_filled(
-            egui::Rect::from_min_max(egui::pos2(rect.left(), y), egui::pos2(rect.right(), y + 1.0)),
+            egui::Rect::from_min_max(
+                egui::pos2(rect.left(), y),
+                egui::pos2(rect.right(), y + 1.0),
+            ),
             0.0,
             line,
         );

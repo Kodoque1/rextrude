@@ -33,7 +33,11 @@ let state: EmulatorState | null = null;
 
 export function createEmulator(hexText: string): void {
   const flashBytes = parseIntelHex(hexText, FLASH_SIZE);
-  const progMem = new Uint16Array(flashBytes.buffer, flashBytes.byteOffset, flashBytes.byteLength / 2);
+  const progMem = new Uint16Array(
+    flashBytes.buffer,
+    flashBytes.byteOffset,
+    flashBytes.byteLength / 2,
+  );
 
   const mega = createMega2560(progMem);
   mega.adc.channelValues.fill(4.78); // plausible room-temp voltage until the thermal model overwrites it

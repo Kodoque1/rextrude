@@ -37,7 +37,13 @@ export class HeaterModel {
 }
 
 /** 100k NTC thermistor with a 4.7k pullup to 5V, Marlin's common "table 1" curve family. */
-export function ntcVoltage(celsius: number, r25 = 100_000, beta = 4092, pullup = 4700, vcc = 5): number {
+export function ntcVoltage(
+  celsius: number,
+  r25 = 100_000,
+  beta = 4092,
+  pullup = 4700,
+  vcc = 5,
+): number {
   const t = celsius - ABSOLUTE_ZERO_C;
   const t25 = 25 - ABSOLUTE_ZERO_C;
   const resistance = r25 * Math.exp(beta * (1 / t - 1 / t25));
@@ -65,7 +71,12 @@ export class ThermalSim {
   readonly bed = new HeaterModel(BED_PARAMS);
 
   /** Advances both heaters and writes the resulting voltages into the ADC channels. */
-  step(dtSeconds: number, duty: { hotend: number; bed: number }, adc: { channelValues: number[] }, channels: { hotend: number; bed: number }) {
+  step(
+    dtSeconds: number,
+    duty: { hotend: number; bed: number },
+    adc: { channelValues: number[] },
+    channels: { hotend: number; bed: number },
+  ) {
     this.hotend.step(dtSeconds, duty.hotend);
     this.bed.step(dtSeconds, duty.bed);
     adc.channelValues[channels.hotend] = ntcVoltage(this.hotend.celsius);

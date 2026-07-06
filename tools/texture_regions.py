@@ -9,19 +9,19 @@ ATLAS_SIZE = 256
 
 REGIONS = {
     # main surfaces
-    "gunmetal": (0, 0, 128, 64),      # brushed dark panels: frame, beam, brackets
-    "olive": (128, 0, 64, 64),        # painted olive: steppers, carriage plate
-    "psu_decal": (192, 0, 64, 64),    # olive + unit label + barcode (PSU front)
-    "steel": (0, 64, 64, 64),         # brushed steel: rails, screws, crossbars
-    "bed_top": (64, 64, 64, 64),      # buildplate grid
-    "hazard": (128, 64, 64, 32),      # yellow/black diagonal stripes
+    "gunmetal": (0, 0, 128, 64),  # brushed dark panels: frame, beam, brackets
+    "olive": (128, 0, 64, 64),  # painted olive: steppers, carriage plate
+    "psu_decal": (192, 0, 64, 64),  # olive + unit label + barcode (PSU front)
+    "steel": (0, 64, 64, 64),  # brushed steel: rails, screws, crossbars
+    "bed_top": (64, 64, 64, 64),  # buildplate grid
+    "hazard": (128, 64, 64, 32),  # yellow/black diagonal stripes
     "caution_decal": (128, 96, 64, 32),  # CAUTION HOT plate
     # solid-ish swatches
     "brass": (192, 64, 16, 16),
     "rubber": (208, 64, 16, 16),
     "alu": (224, 64, 16, 16),
     "dark_steel": (240, 64, 16, 16),
-    "orange": (192, 80, 16, 16),      # origin notch marker
+    "orange": (192, 80, 16, 16),  # origin notch marker
     "cable": (208, 80, 16, 16),
 }
 

@@ -151,11 +151,7 @@ fn codec_header(
         .show(root, |ui| {
             let ctx = ui.ctx().clone();
             ui.horizontal(|ui| {
-                ui.label(
-                    egui::RichText::new("140.85")
-                        .size(30.0)
-                        .color(theme::TEXT),
-                );
+                ui.label(egui::RichText::new("140.85").size(30.0).color(theme::TEXT));
                 ui.label(egui::RichText::new("‹ ›").size(22.0).color(theme::TEXT_DIM));
 
                 ui.separator();
@@ -167,18 +163,22 @@ fn codec_header(
                     state.loaded_file_name.to_uppercase()
                 };
                 ui.label(
-                    egui::RichText::new(if blink { "▶ PRINT OPS" } else { "  PRINT OPS" })
-                        .size(24.0)
-                        .color(theme::TEXT),
+                    egui::RichText::new(if blink {
+                        "▶ PRINT OPS"
+                    } else {
+                        "  PRINT OPS"
+                    })
+                    .size(24.0)
+                    .color(theme::TEXT),
                 );
-                ui.label(
-                    egui::RichText::new(title)
-                        .size(20.0)
-                        .color(theme::TEXT_DIM),
-                );
+                ui.label(egui::RichText::new(title).size(20.0).color(theme::TEXT_DIM));
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let label = if ui_state.show_panel { "PANEL ▸" } else { "◂ PANEL" };
+                    let label = if ui_state.show_panel {
+                        "PANEL ▸"
+                    } else {
+                        "◂ PANEL"
+                    };
                     if ui.button(label).on_hover_text("Tab").clicked() {
                         ui_state.show_panel = !ui_state.show_panel;
                         sfx.write(SfxEvent::Click);
@@ -222,11 +222,7 @@ fn alert_overlay(ctx: &egui::Context, alerts: &AlertState) {
                                 .strong()
                                 .color(theme::ALERT_RED),
                         );
-                        ui.label(
-                            egui::RichText::new(message)
-                                .size(22.0)
-                                .color(theme::TEXT),
-                        );
+                        ui.label(egui::RichText::new(message).size(22.0).color(theme::TEXT));
                     });
                 });
         });
@@ -270,7 +266,11 @@ fn playback_section(
     }
 
     ui.horizontal(|ui| {
-        let label = if state.playing { "|| PAUSE" } else { "▶ PLAY" };
+        let label = if state.playing {
+            "|| PAUSE"
+        } else {
+            "▶ PLAY"
+        };
         if ui.button(label).clicked() {
             state.playing = !state.playing;
             sfx.write(SfxEvent::Click);
@@ -398,51 +398,51 @@ pub fn playback_ui(
                 egui::ScrollArea::vertical()
                     .auto_shrink(false)
                     .show(ui, |ui| {
-                ui.add_space(6.0);
+                        ui.add_space(6.0);
 
-                #[cfg(target_arch = "wasm32")]
-                {
-                    section(ui, "BACKEND", |ui| {
-                        ui.horizontal(|ui| {
-                            ui.selectable_value(
-                                &mut ui_state.backend,
-                                Backend::Gcode,
-                                "SIMULATION",
-                            );
-                            ui.selectable_value(
-                                &mut ui_state.backend,
-                                Backend::Firmware,
-                                "FIRMWARE (MARLIN)",
-                            );
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            section(ui, "BACKEND", |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.selectable_value(
+                                        &mut ui_state.backend,
+                                        Backend::Gcode,
+                                        "SIMULATION",
+                                    );
+                                    ui.selectable_value(
+                                        &mut ui_state.backend,
+                                        Backend::Firmware,
+                                        "FIRMWARE (MARLIN)",
+                                    );
+                                });
+                            });
+                            if ui_state.backend == Backend::Firmware {
+                                firmware_ui(ui, &mut firmware, &mut state);
+                                return;
+                            }
+                        }
+
+                        section(ui, "IMPORT", |ui| {
+                            import_section(ui, &mut state, &mut pending_pick, &mut sfx);
                         });
-                    });
-                    if ui_state.backend == Backend::Firmware {
-                        firmware_ui(ui, &mut firmware, &mut state);
-                        return;
-                    }
-                }
-
-                section(ui, "IMPORT", |ui| {
-                    import_section(ui, &mut state, &mut pending_pick, &mut sfx);
-                });
-                section(ui, "PLAYBACK", |ui| {
-                    playback_section(ui, &mut state, &layer_visuals, &mut sfx);
-                });
-                poppable_section(ui, "MOTION DRO", &mut ui_state.dro, |ui| {
-                    crate::panels::dro::show(ui, &state, &velocity);
-                });
-                poppable_section(ui, "PROGRESS", &mut ui_state.progress, |ui| {
-                    crate::panels::progress::show(ui, &state, &layer_visuals);
-                });
-                poppable_section(ui, "THERMAL", &mut ui_state.thermal, |ui| {
-                    crate::panels::thermal::show(ui, &state);
-                });
-                poppable_section(ui, "G-CODE STREAM", &mut ui_state.gcode_stream, |ui| {
-                    crate::panels::gcode_stream::show(ui, &state);
-                });
-                section(ui, "SYSTEM", |ui| {
-                    ui.checkbox(&mut ui_state.crt, "CRT SCANLINES");
-                });
+                        section(ui, "PLAYBACK", |ui| {
+                            playback_section(ui, &mut state, &layer_visuals, &mut sfx);
+                        });
+                        poppable_section(ui, "MOTION DRO", &mut ui_state.dro, |ui| {
+                            crate::panels::dro::show(ui, &state, &velocity);
+                        });
+                        poppable_section(ui, "PROGRESS", &mut ui_state.progress, |ui| {
+                            crate::panels::progress::show(ui, &state, &layer_visuals);
+                        });
+                        poppable_section(ui, "THERMAL", &mut ui_state.thermal, |ui| {
+                            crate::panels::thermal::show(ui, &state);
+                        });
+                        poppable_section(ui, "G-CODE STREAM", &mut ui_state.gcode_stream, |ui| {
+                            crate::panels::gcode_stream::show(ui, &state);
+                        });
+                        section(ui, "SYSTEM", |ui| {
+                            ui.checkbox(&mut ui_state.crt, "CRT SCANLINES");
+                        });
                     });
             });
     }
@@ -495,7 +495,11 @@ fn firmware_ui(ui: &mut egui::Ui, firmware: &mut FirmwareState, state: &mut Prin
         }
 
         ui.horizontal(|ui| {
-            let label = if firmware.playing { "|| PAUSE" } else { "▶ RESUME" };
+            let label = if firmware.playing {
+                "|| PAUSE"
+            } else {
+                "▶ RESUME"
+            };
             if ui.button(label).clicked() {
                 firmware.playing = !firmware.playing;
             }

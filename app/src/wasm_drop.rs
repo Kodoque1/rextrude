@@ -27,8 +27,8 @@ pub fn install_drop_listener() {
     let dragover = Closure::<dyn FnMut(DragEvent)>::new(move |event: DragEvent| {
         event.prevent_default();
     });
-    let _ = document
-        .add_event_listener_with_callback("dragover", dragover.as_ref().unchecked_ref());
+    let _ =
+        document.add_event_listener_with_callback("dragover", dragover.as_ref().unchecked_ref());
     dragover.forget();
 
     let drop = Closure::<dyn FnMut(DragEvent)>::new(move |event: DragEvent| {

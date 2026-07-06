@@ -18,7 +18,11 @@ const FLASH_SIZE = 256 * 1024;
 const hexPath = fileURLToPath(new URL('../../assets/firmware/marlin_ramps14.hex', import.meta.url));
 const hexText = readFileSync(hexPath, 'utf-8');
 const flashBytes = parseIntelHex(hexText, FLASH_SIZE);
-const progMem = new Uint16Array(flashBytes.buffer, flashBytes.byteOffset, flashBytes.byteLength / 2);
+const progMem = new Uint16Array(
+  flashBytes.buffer,
+  flashBytes.byteOffset,
+  flashBytes.byteLength / 2,
+);
 
 const mega = createMega2560(progMem);
 const { cpu, usart0, adc } = mega;
@@ -54,12 +58,16 @@ console.log('--- booting ---');
 runUntil(() => false, 3);
 
 console.log('\n--- streaming calibration_cube.gcode ---');
-const gcodePath = fileURLToPath(new URL('../../assets/gcode/calibration_cube.gcode', import.meta.url));
+const gcodePath = fileURLToPath(
+  new URL('../../assets/gcode/calibration_cube.gcode', import.meta.url),
+);
 host.enqueueGcode(readFileSync(gcodePath, 'utf-8'));
 
 const finished = runUntil(() => host.linesRemaining === 0, 150);
 
-console.log(`\nhotend: ${thermal.hotend.celsius.toFixed(1)}C, bed: ${thermal.bed.celsius.toFixed(1)}C`);
+console.log(
+  `\nhotend: ${thermal.hotend.celsius.toFixed(1)}C, bed: ${thermal.bed.celsius.toFixed(1)}C`,
+);
 console.log(`steps recorded: ${board.stepEvents.length}, final position:`, board.position);
 
 if (sawError) {

@@ -70,11 +70,13 @@ class Geo:
         self.parts = []  # (label, (lo_x,lo_y,lo_z), (hi_x,hi_y,hi_z)) machine coords
 
     def _record(self, label, center, size):
-        self.parts.append((
-            label,
-            tuple(c - s / 2.0 for c, s in zip(center, size)),
-            tuple(c + s / 2.0 for c, s in zip(center, size)),
-        ))
+        self.parts.append(
+            (
+                label,
+                tuple(c - s / 2.0 for c, s in zip(center, size)),
+                tuple(c + s / 2.0 for c, s in zip(center, size)),
+            )
+        )
 
     def _push(self, verts, faces, mats):
         base = len(self.verts)
@@ -90,10 +92,14 @@ class Geo:
         cx, cy, cz = to_blender(center)
         hx, hy, hz = size[0] / 2.0, size[1] / 2.0, size[2] / 2.0
         verts = [
-            (cx - hx, cy - hy, cz - hz), (cx + hx, cy - hy, cz - hz),
-            (cx + hx, cy + hy, cz - hz), (cx - hx, cy + hy, cz - hz),
-            (cx - hx, cy - hy, cz + hz), (cx + hx, cy - hy, cz + hz),
-            (cx + hx, cy + hy, cz + hz), (cx - hx, cy + hy, cz + hz),
+            (cx - hx, cy - hy, cz - hz),
+            (cx + hx, cy - hy, cz - hz),
+            (cx + hx, cy + hy, cz - hz),
+            (cx - hx, cy + hy, cz - hz),
+            (cx - hx, cy - hy, cz + hz),
+            (cx + hx, cy - hy, cz + hz),
+            (cx + hx, cy + hy, cz + hz),
+            (cx - hx, cy + hy, cz + hz),
         ]
         faces = [
             (0, 3, 2, 1),  # bottom
@@ -122,8 +128,14 @@ class Geo:
         hx, hy, hz = size[0] / 2.0, size[1] / 2.0, size[2] / 2.0
         c = min(chamfer, hx * 0.9, hy * 0.9)
         ring = [
-            (-hx + c, -hy), (hx - c, -hy), (hx, -hy + c), (hx, hy - c),
-            (hx - c, hy), (-hx + c, hy), (-hx, hy - c), (-hx, -hy + c),
+            (-hx + c, -hy),
+            (hx - c, -hy),
+            (hx, -hy + c),
+            (hx, hy - c),
+            (hx - c, hy),
+            (-hx + c, hy),
+            (-hx, hy - c),
+            (-hx, -hy + c),
         ]
         verts = [(cx + x, cy + y, cz - hz) for (x, y) in ring]
         verts += [(cx + x, cy + y, cz + hz) for (x, y) in ring]
@@ -150,8 +162,8 @@ class Geo:
         for i in range(segs):
             j = (i + 1) % segs
             faces.append((i, j, segs + j, segs + i))
-        faces.append(tuple(reversed(range(segs))))          # bottom cap
-        faces.append(tuple(range(segs, 2 * segs)))          # top cap
+        faces.append(tuple(reversed(range(segs))))  # bottom cap
+        faces.append(tuple(range(segs, 2 * segs)))  # top cap
         self._push(verts, faces, [mat] * len(faces))
 
     def add_cone(self, tip, radius, height, mat, segs=6, label=""):
@@ -163,7 +175,7 @@ class Geo:
             a = i / segs * math.tau
             verts.append((cx + radius * math.cos(a), cy + radius * math.sin(a), cz + height))
         faces = [(0, (i % segs) + 1, ((i + 1) % segs) + 1) for i in range(segs)]
-        faces.append(tuple(range(1, segs + 1)))             # top cap
+        faces.append(tuple(range(1, segs + 1)))  # top cap
         self._push(verts, faces, [mat] * len(faces))
 
 
@@ -271,9 +283,9 @@ def build_gantry(mat):
     g.add_chamfered_box((110, 138, 42), (330, 16, 16), 3, "gunmetal", label="beam")
     # hazard trim strip along the beam's lower front edge (0.5mm proud)
     g.add_box((110, 129.2, 35.5), (300, 1.5, 5), "hazard", label="trim")
-    for x in (-45, 265):                                  # Z carriage brackets
+    for x in (-45, 265):  # Z carriage brackets
         g.add_box((x, 138, 42), (30, 30, 44), "gunmetal", label="bracket")
-    for x in (-22, 242):                                  # brass lead nuts
+    for x in (-22, 242):  # brass lead nuts
         g.add_box((x, 138, 42), (14, 14, 18), "brass", label="nut")
     g.add_box((-45, 138, 74), (28, 28, 24), "olive", label="x_stepper")
     g.add_box((110, 129.5, 46), (300, 2, 5), "rubber", label="x_belt")
@@ -284,7 +296,7 @@ def build_gantry(mat):
 def build_carriage(mat):
     g = Geo()
     g.add_chamfered_box((0, 14, 38), (44, 8, 40), 2, "olive", label="plate")
-    for i in range(5):                                    # heatsink fins
+    for i in range(5):  # heatsink fins
         g.add_box((0, 0, 17 + i * 4), (22, 22, 2.6), "alu", label="fin")
     # heater block, warning label toward the operator
     g.add_box((0, 0, 10), (16, 12, 9), "dark_steel", mat_front="caution_decal", label="heater")
@@ -303,7 +315,7 @@ def build_bed(mat):
     g.add_box((110, -1.0, -2.5), (220, 1.5, 4.5), "hazard", label="trim")
     # CAUTION placard hanging off the carriage front
     g.add_box((110, -13, -8), (44, 2, 8), "dark_steel", mat_front="caution_decal", label="placard")
-    for x in (25, 195):                                        # leveling knobs
+    for x in (25, 195):  # leveling knobs
         for y in (25, 195):
             g.add_cylinder((x, y, -11), 7, 5, "rubber", segs=6, label="knob")
     g.add_box((5, 5, 1), (10, 10, 2), "orange", label="notch")
@@ -322,7 +334,6 @@ def build_lead_screw(name, mat):
     g.add_cylinder((0, 0, 0), 3.5, 230, "steel", segs=6, label="screw")
     build_object(name, g, mat, location=to_blender(SCREW_POSITIONS[name]))
     return g
-
 
 
 # ------------------------------------------------------ design validation --
@@ -369,9 +380,7 @@ def validate_design(geos):
     carriage = geos["Carriage_X"].parts
     bed = geos["Bed_Y"].parts
     screws = [
-        _shift(part, SCREW_POSITIONS[name])
-        for name in ("LeadScrew_L", "LeadScrew_R")
-        for part in geos[name].parts
+        _shift(part, SCREW_POSITIONS[name]) for name in ("LeadScrew_L", "LeadScrew_R") for part in geos[name].parts
     ]
 
     # --- kinematic contract ---------------------------------------------
@@ -428,9 +437,7 @@ def validate_design(geos):
                 (la, alo, ahi), (lb, blo, bhi) = parts[i], parts[j]
                 for axis in range(3):
                     others = [k for k in range(3) if k != axis]
-                    flat_overlap = all(
-                        alo[k] + 0.01 < bhi[k] and blo[k] + 0.01 < ahi[k] for k in others
-                    )
+                    flat_overlap = all(alo[k] + 0.01 < bhi[k] and blo[k] + 0.01 < ahi[k] for k in others)
                     if not flat_overlap:
                         continue
                     if abs(ahi[axis] - bhi[axis]) < 0.01 or abs(alo[axis] - blo[axis]) < 0.01:
@@ -446,10 +453,7 @@ def validate_design(geos):
             if abs(cx - SYMMETRY_PLANE_X) < 0.1:
                 continue
             mirror_cx = 2.0 * SYMMETRY_PLANE_X - cx
-            if not any(
-                p[0] == label and abs((p[1][0] + p[2][0]) / 2.0 - mirror_cx) < 0.1
-                for p in sym
-            ):
+            if not any(p[0] == label and abs((p[1][0] + p[2][0]) / 2.0 - mirror_cx) < 0.1 for p in sym):
                 errors.append(f"{obj_name}: {label} at x={cx:.1f} has no mirror twin about x={SYMMETRY_PLANE_X}")
 
     # --- budgets ----------------------------------------------------------
@@ -471,7 +475,7 @@ def validate_design(geos):
 def parse_out_path():
     argv = sys.argv
     if "--" in argv:
-        argv = argv[argv.index("--") + 1:]
+        argv = argv[argv.index("--") + 1 :]
         if "--out" in argv:
             return argv[argv.index("--out") + 1]
     return "app/assets/models/printer.glb"
@@ -483,7 +487,7 @@ def validate_glb(path):
     assert data[:4] == b"glTF", "not a GLB file"
     (json_len,) = struct.unpack("<I", data[12:16])
     assert data[16:20] == b"JSON"
-    doc = json.loads(data[20:20 + json_len])
+    doc = json.loads(data[20 : 20 + json_len])
     names = {n.get("name") for n in doc.get("nodes", [])}
     missing = REQUIRED_NODES - names
     if missing:

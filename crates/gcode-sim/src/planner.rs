@@ -92,7 +92,11 @@ impl Thermal {
 
     fn step(&mut self, dt: f64, config: &PrinterConfig) {
         let step_one = |temp: f32, target: f32, tau: f32| {
-            let goal = if target > 0.0 { target } else { config.ambient_c };
+            let goal = if target > 0.0 {
+                target
+            } else {
+                config.ambient_c
+            };
             goal + (temp - goal) * (-dt as f32 / tau).exp()
         };
         self.hotend_c = step_one(self.hotend_c, self.hotend_target, config.hotend_tau_s);
@@ -232,7 +236,13 @@ fn apply_home(
         if axes.z { 0.0 } else { state.z },
         state.e,
     );
-    push_move(events, state, target, config.homing_feedrate_mm_per_min, line);
+    push_move(
+        events,
+        state,
+        target,
+        config.homing_feedrate_mm_per_min,
+        line,
+    );
 }
 
 /// Convenience wrapper for callers that only need the motion stream.
