@@ -126,12 +126,21 @@ pub fn update_layer_meshes(
 
         match (visuals.visuals[i].as_mut(), needs_mesh) {
             (None, true) => {
-                let mesh = to_bevy_mesh(build_ribbon_mesh(
+                let mesh_data = build_ribbon_mesh(
                     &state.toolpath[layer.start..desired_end],
                     FILAMENT_WIDTH,
                     FILAMENT_HEIGHT,
-                ));
-                let handle = meshes.add(mesh);
+                );
+                // A leading travel-only slice (typical at the start of a
+                // layer, before the first extrusion) yields an empty mesh.
+                // Skip spawning until there's real geometry: handing Bevy's
+                // MeshAllocator a zero-vertex mesh trips a use-after-free in
+                // its allocate/copy asymmetry (see docs/bevy-mesh-allocator-
+                // use-after-free.md). Retried next frame as desired_end grows.
+                if mesh_data.is_empty() {
+                    continue;
+                }
+                let handle = meshes.add(to_bevy_mesh(mesh_data));
                 let entity = commands
                     .spawn((
                         Mesh3d(handle.clone()),
@@ -148,15 +157,20 @@ pub fn update_layer_meshes(
             }
             (Some(visual), true) => {
                 if visual.built_up_to != desired_end {
-                    let mesh = to_bevy_mesh(build_ribbon_mesh(
+                    let mesh_data = build_ribbon_mesh(
                         &state.toolpath[layer.start..desired_end],
                         FILAMENT_WIDTH,
                         FILAMENT_HEIGHT,
-                    ));
-                    if let Some(mut slot) = meshes.get_mut(&visual.mesh_handle) {
-                        *slot = mesh;
+                    );
+                    // Same guard as above: never write an empty mesh into an
+                    // existing tracked handle. Leaving built_up_to unset
+                    // means this retries next frame with a larger slice.
+                    if !mesh_data.is_empty() {
+                        if let Some(mut slot) = meshes.get_mut(&visual.mesh_handle) {
+                            *slot = to_bevy_mesh(mesh_data);
+                        }
+                        visual.built_up_to = desired_end;
                     }
-                    visual.built_up_to = desired_end;
                 }
             }
             (Some(visual), false) => {
