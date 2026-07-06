@@ -133,10 +133,10 @@ pub fn update_layer_meshes(
                 );
                 // A leading travel-only slice (typical at the start of a
                 // layer, before the first extrusion) yields an empty mesh.
-                // Skip spawning until there's real geometry: handing Bevy's
-                // MeshAllocator a zero-vertex mesh trips a use-after-free in
-                // its allocate/copy asymmetry (see docs/bevy-mesh-allocator-
-                // use-after-free.md). Retried next frame as desired_end grows.
+                // Skip spawning until there's real geometry: handing Bevy
+                // 0.19's MeshAllocator a zero-vertex mesh trips a
+                // use-after-free in its allocate/copy asymmetry (upstream
+                // report pending). Retried next frame as desired_end grows.
                 if mesh_data.is_empty() {
                     continue;
                 }

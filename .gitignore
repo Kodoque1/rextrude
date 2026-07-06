@@ -1,0 +1,9 @@
+/target/
+node_modules/
+dist/
+__pycache__/
+*.log
+.DS_Store
+.env
+.pio-venv/
+/app/assets/emu_bridge.js
