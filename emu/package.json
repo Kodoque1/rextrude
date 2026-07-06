@@ -9,15 +9,22 @@
     "board-test": "tsx src/board-test.ts",
     "full-test": "tsx src/full-test.ts",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "fmt:check": "prettier --check .",
+    "fmt": "prettier --write .",
     "build:bridge": "esbuild src/browser-bridge.ts --bundle --format=esm --platform=browser --outfile=../app/assets/emu_bridge.js"
   },
   "dependencies": {
     "avr8js": "^0.21.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@types/node": "^22.0.0",
     "esbuild": "^0.28.1",
+    "eslint": "^9.39.4",
+    "prettier": "^3.9.4",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.62.1"
   }
 }
