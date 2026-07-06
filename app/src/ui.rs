@@ -75,6 +75,15 @@ impl Default for UiState {
     }
 }
 
+/// Whether the pointer is over the docked panel, header, or a popped-out
+/// window this frame, so other systems (e.g. camera scroll-to-zoom) can
+/// avoid fighting egui for wheel/drag input. `egui::Context::wants_pointer_input`
+/// can't be used for this: it only recognizes `egui::Area`/`Window` (which
+/// register in egui's layer registry), not the `egui::Panel`s this UI is
+/// built from, so it never reports true while hovering the docked panel.
+#[derive(Resource, Default)]
+pub struct PointerOverUi(pub bool);
+
 /// Codec-style "!" notification: message + seconds left on screen.
 #[derive(Resource, Default)]
 pub struct AlertState {
@@ -359,12 +368,12 @@ fn floating_section(
     title: &str,
     placement: &mut Placement,
     add_contents: impl FnOnce(&mut egui::Ui),
-) {
+) -> Option<egui::Rect> {
     if *placement != Placement::Floating {
-        return;
+        return None;
     }
     let mut open = true;
-    egui::Window::new(egui::RichText::new(title).size(20.0).color(theme::TEXT))
+    let response = egui::Window::new(egui::RichText::new(title).size(20.0).color(theme::TEXT))
         .open(&mut open)
         .resizable(true)
         .default_width(300.0)
@@ -372,6 +381,7 @@ fn floating_section(
     if !open {
         *placement = Placement::Docked;
     }
+    response.map(|r| r.response.rect)
 }
 
 pub fn playback_ui(
@@ -383,6 +393,7 @@ pub fn playback_ui(
     velocity: Res<crate::kinematics::HeadVelocity>,
     mut sfx: MessageWriter<SfxEvent>,
     mut theme_applied: Local<bool>,
+    mut pointer_over_ui: ResMut<PointerOverUi>,
     #[cfg(target_arch = "wasm32")] mut firmware: ResMut<FirmwareState>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
@@ -458,17 +469,31 @@ pub fn playback_ui(
             });
     }
 
-    floating_section(ctx, "MOTION DRO", &mut ui_state.dro, |ui| {
+    // Everything above allocates out of `root` (header + docked panel), so
+    // whatever's left is the passthrough game-view rect. Floating windows
+    // don't shrink `root`, so their rects are tracked separately below.
+    let viewport_rect = root.available_rect_before_wrap();
+
+    let dro_rect = floating_section(ctx, "MOTION DRO", &mut ui_state.dro, |ui| {
         crate::panels::dro::show(ui, &state, &velocity);
     });
-    floating_section(ctx, "PROGRESS", &mut ui_state.progress, |ui| {
+    let progress_rect = floating_section(ctx, "PROGRESS", &mut ui_state.progress, |ui| {
         crate::panels::progress::show(ui, &state, &layer_visuals);
     });
-    floating_section(ctx, "G-CODE STREAM", &mut ui_state.gcode_stream, |ui| {
+    let gcode_rect = floating_section(ctx, "G-CODE STREAM", &mut ui_state.gcode_stream, |ui| {
         crate::panels::gcode_stream::show(ui, &state);
     });
-    floating_section(ctx, "THERMAL", &mut ui_state.thermal, |ui| {
+    let thermal_rect = floating_section(ctx, "THERMAL", &mut ui_state.thermal, |ui| {
         crate::panels::thermal::show(ui, &state);
+    });
+
+    let pointer_pos = ctx.input(|i| i.pointer.hover_pos());
+    pointer_over_ui.0 = pointer_pos.is_some_and(|pos| {
+        !viewport_rect.contains(pos)
+            || [dro_rect, progress_rect, gcode_rect, thermal_rect]
+                .into_iter()
+                .flatten()
+                .any(|r| r.contains(pos))
     });
 
     alert_overlay(ctx, &alerts);

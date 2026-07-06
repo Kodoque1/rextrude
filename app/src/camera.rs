@@ -41,11 +41,14 @@ pub fn setup_camera(mut commands: Commands, canvas: Res<crate::psx::PsxCanvasIma
 }
 
 /// Right-mouse-drag orbits, scroll wheel zooms. Left click / drag is left
-/// free for egui widgets so the two don't fight over pointer input.
+/// free for egui widgets so the two don't fight over pointer input. Scroll
+/// is suppressed while the pointer is over the info panel or a popped-out
+/// window, so scrolling those doesn't also zoom the camera underneath them.
 pub fn orbit_camera(
     mut mouse_motion: MessageReader<MouseMotion>,
     mut mouse_wheel: MessageReader<MouseWheel>,
     mouse_button: Res<ButtonInput<MouseButton>>,
+    pointer_over_ui: Res<crate::ui::PointerOverUi>,
     mut query: Query<(&mut Transform, &mut OrbitCamera)>,
 ) {
     let dragging = mouse_button.pressed(MouseButton::Right);
@@ -54,8 +57,12 @@ pub fn orbit_camera(
         delta += ev.delta;
     }
     let mut scroll = 0.0;
-    for ev in mouse_wheel.read() {
-        scroll += ev.y;
+    if !pointer_over_ui.0 {
+        for ev in mouse_wheel.read() {
+            scroll += ev.y;
+        }
+    } else {
+        mouse_wheel.clear();
     }
 
     if delta == Vec2::ZERO && scroll == 0.0 {

@@ -40,6 +40,7 @@ fn main() {
     .init_resource::<layers::LayerVisuals>()
     .init_resource::<ui::UiState>()
     .init_resource::<ui::AlertState>()
+    .init_resource::<ui::PointerOverUi>()
     .add_message::<audio::SfxEvent>()
     .add_systems(
         PreStartup,
