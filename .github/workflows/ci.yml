@@ -67,7 +67,7 @@ jobs:
           cache: npm
           cache-dependency-path: emu/package-lock.json
       - run: npm ci --prefix emu
-      - uses: jetli/trunk-action@v0.5
+      - uses: jetli/trunk-action@v0.5.1
         with:
           version: 'v0.21.14'
       - name: Build wasm bundle
