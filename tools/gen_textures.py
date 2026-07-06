@@ -7,8 +7,9 @@ VT323 for stencil decals), deterministic (seeded), and finished with a 4x4
 Bayer ordered dither + 32-color quantize for the PSX grain.
 
 Outputs:
-  app/assets/textures/psx_atlas.png  (256x256, referenced by printer.glb)
-  app/assets/textures/floor.png      (512x512, mapped 1:1 on the base plate)
+  app/assets/textures/psx_atlas.png       (256x256, referenced by printer.glb)
+  app/assets/textures/floor.png           (512x512, mapped 1:1 on the base plate)
+  app/assets/textures/floor_underside.png (256x256, base plate's underside)
 """
 
 import os
@@ -267,6 +268,15 @@ def make_floor(size=512):
     return to_image(arr.astype(np.uint8))
 
 
+def make_dirt(size=256):
+    """Plain earth/dirt ground - no joints, stains, stripes, or stencils.
+    Used for the base plate's underside, which is never meant to look like
+    the finished R&D floor above it, just bare undecorated ground."""
+    base = (0.30, 0.22, 0.14)
+    lum = 0.55 + 0.45 * value_noise(size, size, ((16, 1.0), (6, 0.5), (2, 0.25)))
+    return to_image(shade(base, lum))
+
+
 # ------------------------------------------------------------ finishing --
 
 BAYER4 = (
@@ -324,6 +334,11 @@ def main():
     floor_path = os.path.join(OUT_DIR, "floor.png")
     floor.save(floor_path)
     print(f"wrote {floor_path}")
+
+    dirt = psx_finish(make_dirt(), colors=16, dither_strength=8.0)
+    dirt_path = os.path.join(OUT_DIR, "floor_underside.png")
+    dirt.save(dirt_path)
+    print(f"wrote {dirt_path}")
 
 
 if __name__ == "__main__":

@@ -66,6 +66,33 @@ pub fn setup_scene(
         })),
         Transform::from_xyz(BED_SIZE / 2.0, -14.0, NOZZLE_Z),
     ));
+    // The floor above is a single-sided zero-thickness plane (front face up,
+    // back-face culled by default) - the orbit camera can go underneath it,
+    // so give it a plain undecorated dirt texture instead of showing the
+    // topside texture mirrored through the back (which would look wrong: a
+    // floor's underside has no finish, unlike the R&D floor above it).
+    // Offset it slightly below the top plane (rather than exactly
+    // coincident) to avoid z-fighting with the frame's support rails/posts,
+    // whose placeholder geometry bottoms out only ~1 unit above the floor.
+    // Unlit: this face points away from the directional light, so under
+    // normal shading it would only get the greenish ambient light and read
+    // as a dark olive smear instead of dirt-brown.
+    let dirt_texture: Handle<Image> = asset_server
+        .load_builder()
+        .with_settings(|settings: &mut ImageLoaderSettings| {
+            settings.sampler = ImageSampler::nearest();
+        })
+        .load("textures/floor_underside.png");
+    commands.spawn((
+        Mesh3d(meshes.add(Plane3d::new(Vec3::NEG_Y, Vec2::new(190.0, 280.0)).mesh())),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color_texture: Some(dirt_texture),
+            perceptual_roughness: 1.0,
+            unlit: true,
+            ..default()
+        })),
+        Transform::from_xyz(BED_SIZE / 2.0, -14.3, NOZZLE_Z),
+    ));
 
     let steel = materials.add(StandardMaterial {
         base_color: Color::srgb(0.55, 0.55, 0.6),
