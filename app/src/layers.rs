@@ -28,6 +28,7 @@ pub struct LayerVisuals {
     layers: Vec<Layer>,
     visuals: Vec<Option<LayerVisual>>,
     generation: u64,
+    material: Option<Handle<StandardMaterial>>,
 }
 
 impl LayerVisuals {
@@ -99,6 +100,21 @@ pub fn update_layer_meshes(
         return;
     };
 
+    let material = visuals
+        .material
+        .get_or_insert_with(|| {
+            materials.add(StandardMaterial {
+                base_color: Color::srgb(0.9, 0.55, 0.15),
+                // `gcode_to_bevy` swaps axes with determinant -1 (a
+                // reflection), so gcode-space CCW winding becomes CW in
+                // Bevy space. Back-face culling would cull the exterior
+                // faces, not the interior ones - keep this disabled.
+                cull_mode: None,
+                ..default()
+            })
+        })
+        .clone();
+
     for i in 0..visuals.layers.len() {
         let layer = visuals.layers[i];
         let desired_end = match i.cmp(&current_layer) {
@@ -116,15 +132,10 @@ pub fn update_layer_meshes(
                     FILAMENT_HEIGHT,
                 ));
                 let handle = meshes.add(mesh);
-                let material = materials.add(StandardMaterial {
-                    base_color: Color::srgb(0.9, 0.55, 0.15),
-                    cull_mode: None,
-                    ..default()
-                });
                 let entity = commands
                     .spawn((
                         Mesh3d(handle.clone()),
-                        MeshMaterial3d(material),
+                        MeshMaterial3d(material.clone()),
                         Transform::default(),
                     ))
                     .id();
