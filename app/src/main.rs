@@ -4,6 +4,7 @@ use bevy_egui::{EguiPlugin, EguiStartupSet};
 mod audio;
 mod camera;
 mod coords;
+mod file_picker;
 mod kinematics;
 mod layers;
 mod panels;
@@ -41,6 +42,7 @@ fn main() {
     .init_resource::<ui::UiState>()
     .init_resource::<ui::AlertState>()
     .init_resource::<ui::PointerOverUi>()
+    .init_resource::<file_picker::PendingGcodePick>()
     .add_message::<audio::SfxEvent>()
     .add_systems(
         PreStartup,
@@ -70,6 +72,7 @@ fn main() {
         Update,
         (
             loader::handle_file_drop,
+            file_picker::poll_file_pick,
             playback::advance_time,
             layers::update_layer_meshes,
             kinematics::drive_kinematics,

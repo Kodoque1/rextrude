@@ -1,5 +1,3 @@
-#[cfg(not(target_arch = "wasm32"))]
-use bevy::log::warn;
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 
@@ -48,8 +46,6 @@ pub enum Placement {
 
 #[derive(Resource)]
 pub struct UiState {
-    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
-    pub native_path: String,
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     pub backend: Backend,
     pub show_panel: bool,
@@ -63,7 +59,6 @@ pub struct UiState {
 impl Default for UiState {
     fn default() -> Self {
         Self {
-            native_path: String::new(),
             backend: Backend::default(),
             show_panel: true,
             crt: true,
@@ -240,11 +235,9 @@ fn alert_overlay(ctx: &egui::Context, alerts: &AlertState) {
 fn import_section(
     ui: &mut egui::Ui,
     state: &mut PrintState,
-    ui_state: &mut UiState,
+    pending_pick: &mut crate::file_picker::PendingGcodePick,
     sfx: &mut MessageWriter<SfxEvent>,
 ) {
-    // Touched unconditionally so wasm builds don't warn on the unused param.
-    let _ = &mut *ui_state;
     ui.horizontal_wrapped(|ui| {
         for &(name, contents) in EXAMPLES {
             if ui.button(name).clicked() {
@@ -252,28 +245,12 @@ fn import_section(
                 sfx.write(SfxEvent::Beep);
             }
         }
+        if ui.button("BROWSE").clicked() {
+            crate::file_picker::spawn_file_pick(pending_pick);
+            sfx.write(SfxEvent::Beep);
+        }
     });
 
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        ui.label(egui::RichText::new("LOAD FROM PATH").color(theme::TEXT_DIM));
-        ui.horizontal(|ui| {
-            ui.add(
-                egui::TextEdit::singleline(&mut ui_state.native_path).desired_width(200.0),
-            );
-            if ui.button("LOAD").clicked() {
-                match std::fs::read_to_string(&ui_state.native_path) {
-                    Ok(contents) => {
-                        let name = ui_state.native_path.clone();
-                        load_gcode_text(state, name, &contents);
-                    }
-                    Err(err) => {
-                        warn!("failed to read {}: {err}", ui_state.native_path);
-                    }
-                }
-            }
-        });
-    }
     ui.label(
         egui::RichText::new("(or drag & drop a .gcode file)")
             .small()
@@ -388,6 +365,7 @@ pub fn playback_ui(
     mut contexts: EguiContexts,
     mut state: ResMut<PrintState>,
     mut ui_state: ResMut<UiState>,
+    mut pending_pick: ResMut<crate::file_picker::PendingGcodePick>,
     layer_visuals: Res<LayerVisuals>,
     alerts: Res<AlertState>,
     velocity: Res<crate::kinematics::HeadVelocity>,
@@ -445,7 +423,7 @@ pub fn playback_ui(
                 }
 
                 section(ui, "IMPORT", |ui| {
-                    import_section(ui, &mut state, &mut ui_state, &mut sfx);
+                    import_section(ui, &mut state, &mut pending_pick, &mut sfx);
                 });
                 section(ui, "PLAYBACK", |ui| {
                     playback_section(ui, &mut state, &layer_visuals, &mut sfx);

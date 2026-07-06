@@ -13,6 +13,13 @@ audio = ["bevy/bevy_audio", "bevy/wav"]
 [dependencies]
 motion = { path = "../crates/motion" }
 gcode-sim = { path = "../crates/gcode-sim" }
+# Cross-platform "BROWSE" file dialog for gcode import: AsyncFileDialog
+# drives a real OS-native dialog on desktop (via xdg-portal on Linux, no
+# GTK dev headers needed at build time) and a hidden <input type="file">
+# on wasm32, through the same .await-based API. The "wayland" default
+# feature is dropped: it needs libwayland-dev (wayland-client.pc) at
+# build time just to resolve parent-window handles, which we never set.
+rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
 
 [dependencies.bevy]
 version = "0.19"
