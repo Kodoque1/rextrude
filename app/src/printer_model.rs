@@ -51,12 +51,12 @@ pub fn setup_scene(
     // Base plate, sized for the full bed travel envelope (world Z -110..330).
     // The R&D floor texture (tools/gen_textures.py) maps 1:1 onto it; keep
     // nearest sampling for the PSX pixel look.
-    let floor_texture: Handle<Image> = asset_server.load_with_settings(
-        "textures/floor.png",
-        |settings: &mut ImageLoaderSettings| {
+    let floor_texture: Handle<Image> = asset_server
+        .load_builder()
+        .with_settings(|settings: &mut ImageLoaderSettings| {
             settings.sampler = ImageSampler::nearest();
-        },
-    );
+        })
+        .load("textures/floor.png");
     commands.spawn((
         Mesh3d(meshes.add(Plane3d::default().mesh().size(380.0, 560.0))),
         MeshMaterial3d(materials.add(StandardMaterial {

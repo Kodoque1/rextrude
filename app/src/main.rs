@@ -1,3 +1,8 @@
+// Bevy systems idiomatically take many Query/Res/ResMut parameters, and
+// ParamSet/async Task types are inherently "complex" by these lints'
+// heuristics; Bevy's own crates disable both project-wide for this reason.
+#![allow(clippy::too_many_arguments, clippy::type_complexity)]
+
 use bevy::prelude::*;
 use bevy_egui::{EguiPlugin, EguiStartupSet};
 
