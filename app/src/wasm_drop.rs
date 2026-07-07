@@ -61,12 +61,33 @@ pub fn install_drop_listener() {
     drop.forget();
 }
 
-pub fn poll_dropped_file(mut state: ResMut<PrintState>, mut alerts: ResMut<AlertState>) {
+pub fn poll_dropped_file(
+    mut state: ResMut<PrintState>,
+    mut alerts: ResMut<AlertState>,
+    ui_state: Res<crate::ui::UiState>,
+    firmware: Res<crate::firmware::FirmwareState>,
+) {
     let dropped = DROPPED_FILE.with(|slot| slot.borrow_mut().take());
-    if let Some((name, bytes)) = dropped {
-        if let Err(err) = crate::loader::load_import_bytes(&mut state, name, &bytes) {
-            warn!("{err}");
-            alerts.raise(err, 4.0);
+    let Some((name, bytes)) = dropped else {
+        return;
+    };
+
+    // In Firmware mode, a dropped file streams into the live emulator's UART
+    // instead of the gcode-sim pipeline `load_import_bytes` drives -- same
+    // dispatch as the BROWSE button in `file_picker::poll_file_pick`.
+    if ui_state.backend == crate::ui::Backend::Firmware {
+        match crate::loader::decode_gcode_bytes(&name, &bytes) {
+            Ok(text) => firmware.send_gcode(&text),
+            Err(err) => {
+                warn!("{err}");
+                alerts.raise(err, 4.0);
+            }
         }
+        return;
+    }
+
+    if let Err(err) = crate::loader::load_import_bytes(&mut state, name, &bytes) {
+        warn!("{err}");
+        alerts.raise(err, 4.0);
     }
 }
