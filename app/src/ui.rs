@@ -430,7 +430,6 @@ pub fn playback_ui(
                             });
                             if ui_state.backend == Backend::Firmware {
                                 firmware_ui(ui, &mut firmware, &mut state);
-                                return;
                             }
                         }
 
