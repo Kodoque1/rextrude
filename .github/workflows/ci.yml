@@ -21,6 +21,8 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+      - name: Validate printer.glb against its machine spec
+        run: cargo run -p rigcheck --release -- check app/assets/models/printer.glb --format github
 
   ts:
     runs-on: ubuntu-latest

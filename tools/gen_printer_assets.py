@@ -4,8 +4,17 @@ Run headless from the repo root:
 
     blender --background --factory-startup --python tools/gen_printer_assets.py -- \
         --out app/assets/models/printer.glb
+    cargo run -p rigcheck --release -- check app/assets/models/printer.glb
 
 Requires app/assets/textures/psx_atlas.png (python3 tools/gen_textures.py).
+
+Design/kinematic validation (former `validate_design`/`validate_glb`) has
+moved to the `rigcheck` CLI (crates/rigcheck), driven by the sidecar spec
+`app/assets/models/printer.machine.toml`. This script's job is now just to
+build the mesh and emit the GLB plus a tier-2 evidence manifest
+(`printer.evidence.json`, labeled machine-space AABBs) that rigcheck
+consumes for label-aware checks (symmetry, precise joint allowances) it
+can't recover from the flattened mesh alone. See crates/rigcheck/README.md.
 
 Coordinate convention: everything below is authored in *machine coordinates*,
 identical to the app's gcode space: X across the bed, Y along bed travel,
@@ -30,22 +39,12 @@ Node contract with the app (app/src/printer_rig.rs):
 import json
 import math
 import os
-import struct
 import sys
 
 import bpy
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from texture_regions import region_uv_rect
-
-REQUIRED_NODES = {
-    "Frame_Static",
-    "Gantry_X",
-    "Carriage_X",
-    "Bed_Y",
-    "LeadScrew_L",
-    "LeadScrew_R",
-}
 
 ATLAS_PATH = os.path.abspath(os.path.join("app", "assets", "textures", "psx_atlas.png"))
 
@@ -60,8 +59,8 @@ def to_blender(p):
 
 class Geo:
     """Accumulates verts/faces/per-face atlas region for one mesh object,
-    plus labeled machine-space AABBs of every primitive for the design
-    validator (`validate_design`)."""
+    plus labeled machine-space AABBs of every primitive — serialized as the
+    tier-2 evidence manifest for rigcheck (see `write_evidence`)."""
 
     def __init__(self):
         self.verts = []
@@ -254,7 +253,7 @@ def build_frame(mat):
     # Y rails + end crossmembers + feet (the chassis the bed rides on).
     # Crossmembers sit 0.5mm below the rail plane and feet poke 0.2mm into
     # the rails: attachments overlap in volume instead of sharing render
-    # planes (see validate_design's z-fight rule).
+    # planes (see rigcheck's quality.z_fight check).
     for x in (60, 160):
         g.add_box((x, 110, -14), (12, 470, 6), "steel", label="rail")
     for y in (-90, 315):
@@ -336,139 +335,6 @@ def build_lead_screw(name, mat):
     return g
 
 
-# ------------------------------------------------------ design validation --
-
-# gcode travel envelope the machine must survive (mm).
-TRAVEL = ((0.0, 220.0), (0.0, 220.0), (0.0, 60.0))
-# The nozzle lane: carriage local coords sit at machine y = 110.
-NOZZLE_LANE_Y = 110.0
-MAX_TRIANGLES = 5000
-# Parts expected to come in mirror pairs about the machine center plane.
-SYMMETRIC_LABELS = {"upright", "z_stepper", "bracket", "nut", "rail", "foot", "knob"}
-SYMMETRY_PLANE_X = 110.0
-
-
-def _shift(part, d):
-    label, lo, hi = part
-    return (label, tuple(a + b for a, b in zip(lo, d)), tuple(a + b for a, b in zip(hi, d)))
-
-
-def _overlap(a, b, tol=0.01):
-    _, alo, ahi = a
-    _, blo, bhi = b
-    return all(alo[i] + tol < bhi[i] and blo[i] + tol < ahi[i] for i in range(3))
-
-
-def _collisions(errors, when, group_a, group_b):
-    for pa in group_a:
-        for pb in group_b:
-            if _overlap(pa, pb):
-                errors.append(f"collision {when}: {pa[0]} {pa[1]}..{pa[2]} vs {pb[0]} {pb[1]}..{pb[2]}")
-
-
-def validate_design(geos):
-    """Design-by-contract checks over the authored parts; exits on failure.
-
-    Guards the invariants the app's kinematics rely on (nozzle-at-origin,
-    bed-top-at-zero, screws spinning about their own axis), sweeps the
-    travel envelope for collisions, and rejects same-facing coplanar
-    render planes (z-fighting) and budget overruns.
-    """
-    errors = []
-    frame = geos["Frame_Static"].parts
-    gantry = geos["Gantry_X"].parts
-    carriage = geos["Carriage_X"].parts
-    bed = geos["Bed_Y"].parts
-    screws = [
-        _shift(part, SCREW_POSITIONS[name]) for name in ("LeadScrew_L", "LeadScrew_R") for part in geos[name].parts
-    ]
-
-    # --- kinematic contract ---------------------------------------------
-    cgeo = geos["Carriage_X"]
-    if not any(all(abs(c) < 1e-6 for c in v) for v in cgeo.verts):
-        errors.append("carriage: nozzle tip vertex is not at the local origin")
-    if min(v[2] for v in cgeo.verts) < -1e-6:
-        errors.append("carriage: geometry extends below the nozzle tip")
-
-    slab = next(p for p in bed if p[0] == "slab")
-    if any(abs(a - b) > 1e-3 for a, b in zip(slab[1] + slab[2], (0, 0, -5, 220, 220, 0))):
-        errors.append(f"bed: slab must span (0,0,-5)..(220,220,0), got {slab[1]}..{slab[2]}")
-    bed_top_overhang = max(hi[2] for _, _, hi in bed)
-    if bed_top_overhang > 2.01:
-        errors.append(f"bed: parts rise {bed_top_overhang}mm above the print surface")
-
-    for name in ("LeadScrew_L", "LeadScrew_R"):
-        sgeo = geos[name]
-        r = max(max(abs(v[0]), abs(v[1])) for v in sgeo.verts)
-        if r > 4.0:
-            errors.append(f"{name}: geometry {r:.1f}mm off its spin axis (must be centered)")
-        if all(abs(c) < 1e-6 for c in SCREW_POSITIONS[name][:2]):
-            errors.append(f"{name}: node translation looks baked into geometry")
-
-    lx, rx = SCREW_POSITIONS["LeadScrew_L"][0], SCREW_POSITIONS["LeadScrew_R"][0]
-    if abs((lx + rx) / 2.0 - SYMMETRY_PLANE_X) > 0.1:
-        errors.append("lead screws are not mirrored about the machine center plane")
-
-    gantry_low = min(lo[2] for _, lo, _ in gantry)
-    if gantry_low < 5.0:
-        errors.append(f"gantry: reaches z={gantry_low}mm at the gcode z=0 pose (bed clearance)")
-
-    # --- travel-envelope collision sweep ---------------------------------
-    static = frame + screws
-    for gx in TRAVEL[0]:
-        for gy in TRAVEL[1]:
-            for gz in TRAVEL[2]:
-                when = f"at gcode ({gx:.0f},{gy:.0f},{gz:.0f})"
-                carr_w = [_shift(p, (gx, NOZZLE_LANE_Y, gz)) for p in carriage]
-                bed_w = [_shift(p, (0.0, NOZZLE_LANE_Y - gy, 0.0)) for p in bed]
-                gantry_w = [_shift(p, (0.0, 0.0, gz)) for p in gantry]
-                _collisions(errors, when, carr_w, static)
-                _collisions(errors, when, bed_w, static)
-                _collisions(errors, when, bed_w, gantry_w)
-                _collisions(errors, when, carr_w, gantry_w)
-                # the nozzle is allowed to touch the print surface
-                _collisions(errors, when, [p for p in carr_w if p[0] != "nozzle"], bed_w)
-
-    # --- z-fight guard: same-facing coplanar planes with overlap ---------
-    for obj_name, geo in geos.items():
-        parts = geo.parts
-        for i in range(len(parts)):
-            for j in range(i + 1, len(parts)):
-                (la, alo, ahi), (lb, blo, bhi) = parts[i], parts[j]
-                for axis in range(3):
-                    others = [k for k in range(3) if k != axis]
-                    flat_overlap = all(alo[k] + 0.01 < bhi[k] and blo[k] + 0.01 < ahi[k] for k in others)
-                    if not flat_overlap:
-                        continue
-                    if abs(ahi[axis] - bhi[axis]) < 0.01 or abs(alo[axis] - blo[axis]) < 0.01:
-                        errors.append(
-                            f"z-fight risk in {obj_name}: {la} and {lb} share a same-facing plane on axis {axis}"
-                        )
-
-    # --- symmetry about the machine center plane --------------------------
-    for obj_name, geo in geos.items():
-        sym = [p for p in geo.parts if p[0] in SYMMETRIC_LABELS]
-        for label, lo, hi in sym:
-            cx = (lo[0] + hi[0]) / 2.0
-            if abs(cx - SYMMETRY_PLANE_X) < 0.1:
-                continue
-            mirror_cx = 2.0 * SYMMETRY_PLANE_X - cx
-            if not any(p[0] == label and abs((p[1][0] + p[2][0]) / 2.0 - mirror_cx) < 0.1 for p in sym):
-                errors.append(f"{obj_name}: {label} at x={cx:.1f} has no mirror twin about x={SYMMETRY_PLANE_X}")
-
-    # --- budgets ----------------------------------------------------------
-    tris = sum(len(f) - 2 for g in geos.values() for f in g.faces)
-    if tris > MAX_TRIANGLES:
-        errors.append(f"triangle budget exceeded: {tris} > {MAX_TRIANGLES}")
-
-    if errors:
-        print(f"DESIGN VALIDATION FAILED ({len(errors)} violations):")
-        for e in errors:
-            print(f"  - {e}")
-        sys.exit(1)
-    print(f"design validation OK ({tris} tris, {sum(len(g.parts) for g in geos.values())} parts)")
-
-
 # ------------------------------------------------------------------ main --
 
 
@@ -481,26 +347,29 @@ def parse_out_path():
     return "app/assets/models/printer.glb"
 
 
-def validate_glb(path):
-    with open(path, "rb") as f:
-        data = f.read()
-    assert data[:4] == b"glTF", "not a GLB file"
-    (json_len,) = struct.unpack("<I", data[12:16])
-    assert data[16:20] == b"JSON"
-    doc = json.loads(data[20 : 20 + json_len])
-    names = {n.get("name") for n in doc.get("nodes", [])}
-    missing = REQUIRED_NODES - names
-    if missing:
-        print(f"ERROR: exported GLB is missing nodes: {sorted(missing)}")
-        sys.exit(1)
-    tris = sum(
-        acc.get("count", 0) // 3
-        for m in doc.get("meshes", [])
-        for p in m.get("primitives", [])
-        for acc in [doc["accessors"][p["indices"]]]
-        if "indices" in p
-    )
-    print(f"GLB OK: nodes={sorted(names)} triangles={tris}")
+def write_evidence(geos, out_path):
+    """Emit the tier-2 evidence manifest consumed by rigcheck
+    (crates/rigcheck): labeled machine-space AABBs per node, recovering the
+    sub-part identity that doesn't survive into the flattened GLB mesh.
+    Lead-screw parts are authored local-to-origin and placed via node
+    translation, so their AABBs are shifted into machine/world space here
+    to match every other (untranslated) node.
+    """
+    nodes = {}
+    for name, geo in geos.items():
+        shift = SCREW_POSITIONS.get(name, (0.0, 0.0, 0.0))
+        nodes[name] = [
+            {
+                "label": label,
+                "min": [lo[i] + shift[i] for i in range(3)],
+                "max": [hi[i] + shift[i] for i in range(3)],
+            }
+            for label, lo, hi in geo.parts
+        ]
+    doc = {"version": 1, "space": "machine", "nodes": nodes}
+    with open(out_path, "w") as f:
+        json.dump(doc, f, indent=2)
+    print(f"evidence written: {out_path}")
 
 
 def main():
@@ -519,10 +388,8 @@ def main():
         "LeadScrew_L": build_lead_screw("LeadScrew_L", mat),
         "LeadScrew_R": build_lead_screw("LeadScrew_R", mat),
     }
-    validate_design(geos)
-
     bpy.ops.export_scene.gltf(filepath=out, export_format="GLB", export_yup=True)
-    validate_glb(out)
+    write_evidence(geos, os.path.splitext(out)[0] + ".evidence.json")
 
 
 main()
