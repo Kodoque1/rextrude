@@ -1,4 +1,4 @@
-use bevy::input::mouse::{MouseMotion, MouseWheel};
+use bevy::input::mouse::{MouseMotion, MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
 
 #[derive(Component)]
@@ -59,7 +59,13 @@ pub fn orbit_camera(
     let mut scroll = 0.0;
     if !pointer_over_ui.0 {
         for ev in mouse_wheel.read() {
-            scroll += ev.y;
+            // Browsers report wheel deltas in pixels (~100x a line-scroll
+            // notch); native platforms report lines. Normalize to
+            // line-equivalent units so sensitivity matches on both.
+            scroll += match ev.unit {
+                MouseScrollUnit::Line => ev.y,
+                MouseScrollUnit::Pixel => ev.y / MouseScrollUnit::SCROLL_UNIT_CONVERSION_FACTOR,
+            };
         }
     } else {
         mouse_wheel.clear();
