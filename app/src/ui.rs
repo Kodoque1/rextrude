@@ -448,16 +448,16 @@ pub fn playback_ui(
                                     state.live = true;
                                     state.playing = firmware.playing;
                                 }
-                                firmware_ui(ui, &mut firmware, &mut state);
+                                firmware_ui(ui, &mut firmware, &mut state, &mut pending_pick);
                             } else {
                                 state.live = false;
                             }
                         }
 
-                        section(ui, "IMPORT", |ui| {
-                            import_section(ui, &mut state, &mut pending_pick, &mut sfx);
-                        });
                         if !firmware_active {
+                            section(ui, "IMPORT", |ui| {
+                                import_section(ui, &mut state, &mut pending_pick, &mut sfx);
+                            });
                             section(ui, "PLAYBACK", |ui| {
                                 playback_section(ui, &mut state, &layer_visuals, &mut sfx);
                             });
@@ -518,7 +518,12 @@ pub fn playback_ui(
 }
 
 #[cfg(target_arch = "wasm32")]
-fn firmware_ui(ui: &mut egui::Ui, firmware: &mut FirmwareState, state: &mut PrintState) {
+fn firmware_ui(
+    ui: &mut egui::Ui,
+    firmware: &mut FirmwareState,
+    state: &mut PrintState,
+    pending_pick: &mut crate::file_picker::PendingGcodePick,
+) {
     section(ui, "FIRMWARE", |ui| {
         if !firmware.loaded {
             ui.label(egui::RichText::new("NO FIRMWARE LOADED").color(theme::TEXT_DIM));
@@ -562,6 +567,9 @@ fn firmware_ui(ui: &mut egui::Ui, firmware: &mut FirmwareState, state: &mut Prin
                 if ui.button(name).clicked() {
                     firmware.send_gcode(contents);
                 }
+            }
+            if ui.button("BROWSE").clicked() {
+                crate::file_picker::spawn_file_pick(pending_pick);
             }
         });
     });

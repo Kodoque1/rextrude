@@ -11,6 +11,17 @@ pub fn load_gcode_text(state: &mut PrintState, file_name: String, gcode: &str) {
     state.load(file_name, sim.toolpath, source_lines, sim.thermal);
 }
 
+/// Decodes raw imported bytes to gcode text: `.bgcode` via the binary
+/// decoder, everything else validated as UTF-8 gcode text.
+pub fn decode_gcode_bytes(file_name: &str, bytes: &[u8]) -> Result<String, String> {
+    if crate::bgcode::is_bgcode(file_name, bytes) {
+        return crate::bgcode::decode(bytes);
+    }
+    std::str::from_utf8(bytes)
+        .map(str::to_string)
+        .map_err(|_| format!("{file_name}: not UTF-8 gcode and not bgcode"))
+}
+
 /// Single entry point for every import path (BROWSE, drag & drop, autoload):
 /// decodes `.bgcode` to ASCII first, then reuses the plain-text pipeline.
 pub fn load_import_bytes(
@@ -18,18 +29,9 @@ pub fn load_import_bytes(
     file_name: String,
     bytes: &[u8],
 ) -> Result<(), String> {
-    if crate::bgcode::is_bgcode(&file_name, bytes) {
-        let text = crate::bgcode::decode(bytes)?;
-        load_gcode_text(state, file_name, &text);
-        return Ok(());
-    }
-    match std::str::from_utf8(bytes) {
-        Ok(text) => {
-            load_gcode_text(state, file_name, text);
-            Ok(())
-        }
-        Err(_) => Err(format!("{file_name}: not UTF-8 gcode and not bgcode")),
-    }
+    let text = decode_gcode_bytes(&file_name, bytes)?;
+    load_gcode_text(state, file_name, &text);
+    Ok(())
 }
 
 /// Dev aid (native only): `SIM_AUTOLOAD=<path|example name>` loads a gcode
