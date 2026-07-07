@@ -11,9 +11,10 @@ use wasm_bindgen::JsCast;
 use web_sys::{DragEvent, FileReader, ProgressEvent};
 
 use crate::playback::PrintState;
+use crate::ui::AlertState;
 
 thread_local! {
-    static DROPPED_FILE: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
+    static DROPPED_FILE: RefCell<Option<(String, Vec<u8>)>> = const { RefCell::new(None) };
 }
 
 pub fn install_drop_listener() {
@@ -47,23 +48,25 @@ pub fn install_drop_listener() {
         let reader = FileReader::new().expect("FileReader is supported");
         let reader_clone = reader.clone();
         let onload = Closure::<dyn FnMut(ProgressEvent)>::new(move |_event: ProgressEvent| {
-            if let Ok(text) = reader_clone.result() {
-                if let Some(text) = text.as_string() {
-                    DROPPED_FILE.with(|slot| *slot.borrow_mut() = Some((name.clone(), text)));
-                }
+            if let Ok(buf) = reader_clone.result() {
+                let bytes = web_sys::js_sys::Uint8Array::new(&buf).to_vec();
+                DROPPED_FILE.with(|slot| *slot.borrow_mut() = Some((name.clone(), bytes)));
             }
         });
         reader.set_onload(Some(onload.as_ref().unchecked_ref()));
         onload.forget();
-        let _ = reader.read_as_text(&file);
+        let _ = reader.read_as_array_buffer(&file);
     });
     let _ = document.add_event_listener_with_callback("drop", drop.as_ref().unchecked_ref());
     drop.forget();
 }
 
-pub fn poll_dropped_file(mut state: ResMut<PrintState>) {
+pub fn poll_dropped_file(mut state: ResMut<PrintState>, mut alerts: ResMut<AlertState>) {
     let dropped = DROPPED_FILE.with(|slot| slot.borrow_mut().take());
-    if let Some((name, contents)) = dropped {
-        crate::loader::load_gcode_text(&mut state, name, &contents);
+    if let Some((name, bytes)) = dropped {
+        if let Err(err) = crate::loader::load_import_bytes(&mut state, name, &bytes) {
+            warn!("{err}");
+            alerts.raise(err, 4.0);
+        }
     }
 }

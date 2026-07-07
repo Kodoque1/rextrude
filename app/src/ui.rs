@@ -248,10 +248,22 @@ fn import_section(
     });
 
     ui.label(
-        egui::RichText::new("(or drag & drop a .gcode file)")
+        egui::RichText::new("(or drag & drop a .gcode / .bgcode file)")
             .small()
             .color(theme::TEXT_DIM),
     );
+    ui.horizontal(|ui| {
+        ui.label(
+            egui::RichText::new("NEED GCODE?")
+                .small()
+                .color(theme::TEXT_DIM),
+        );
+        ui.hyperlink_to(
+            egui::RichText::new("printables.com pre-sliced files").small(),
+            "https://www.printables.com/tag/gcode",
+        )
+        .on_hover_text("Search Printables for ready-made .gcode / .bgcode files");
+    });
 }
 
 fn playback_section(

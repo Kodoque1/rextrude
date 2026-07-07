@@ -11,8 +11,9 @@ use bevy::log::warn;
 use bevy::prelude::*;
 use bevy::tasks::{block_on, poll_once, IoTaskPool, Task};
 
-use crate::loader::load_gcode_text;
+use crate::loader::load_import_bytes;
 use crate::playback::PrintState;
+use crate::ui::AlertState;
 
 /// The in-flight "user is picking a file" task, if any.
 #[derive(Resource, Default)]
@@ -26,7 +27,7 @@ pub fn spawn_file_pick(pending: &mut PendingGcodePick) {
     }
     pending.0 = Some(IoTaskPool::get().spawn(async move {
         let Some(handle) = rfd::AsyncFileDialog::new()
-            .add_filter("gcode", &["gcode", "gco"])
+            .add_filter("gcode", &["gcode", "gco", "bgcode"])
             .set_title("Import G-code")
             .pick_file()
             .await
@@ -41,7 +42,11 @@ pub fn spawn_file_pick(pending: &mut PendingGcodePick) {
 
 /// Drains a finished file-pick task each frame and loads its result.
 /// Registered unconditionally in `Update` on both targets.
-pub fn poll_file_pick(mut pending: ResMut<PendingGcodePick>, mut state: ResMut<PrintState>) {
+pub fn poll_file_pick(
+    mut pending: ResMut<PendingGcodePick>,
+    mut state: ResMut<PrintState>,
+    mut alerts: ResMut<AlertState>,
+) {
     let Some(task) = pending.0.as_mut() else {
         return;
     };
@@ -52,8 +57,8 @@ pub fn poll_file_pick(mut pending: ResMut<PendingGcodePick>, mut state: ResMut<P
     let Some((name, bytes)) = result else {
         return; // user cancelled the dialog
     };
-    match String::from_utf8(bytes) {
-        Ok(contents) => load_gcode_text(&mut state, name, &contents),
-        Err(err) => warn!("BROWSE: {name} is not valid UTF-8 gcode text: {err}"),
+    if let Err(err) = load_import_bytes(&mut state, name, &bytes) {
+        warn!("BROWSE: {err}");
+        alerts.raise(err, 4.0);
     }
 }

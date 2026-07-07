@@ -7,6 +7,7 @@ use bevy::prelude::*;
 use bevy_egui::{EguiPlugin, EguiStartupSet};
 
 mod audio;
+mod bgcode;
 mod camera;
 mod coords;
 mod file_picker;
