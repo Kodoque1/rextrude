@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/motion",
     "crates/gcode-sim",
+    "crates/rigcheck",
     "app",
 ]
 

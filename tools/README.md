@@ -28,9 +28,22 @@ blender --background --factory-startup --python tools/gen_printer_assets.py -- \
 
 The script builds the low-poly i3-style bedslinger, planar-maps every face
 into its named atlas region (fit-to-region, oriented unmirrored for the
-operator-side view), exports a GLB, and asserts that all rig node names the
-app looks for (`Frame_Static`, `Gantry_X`, `Carriage_X`, `Bed_Y`,
-`LeadScrew_L`, `LeadScrew_R`) survived the export.
+operator-side view), exports a GLB, and writes `printer.evidence.json` — a
+tier-2 evidence manifest of labeled machine-space AABBs consumed by
+`rigcheck` (see below).
+
+Design/kinematic validation of the exported model is a separate step, via
+the `rigcheck` CLI (`crates/rigcheck`, schema and check reference in
+`crates/rigcheck/README.md`):
+
+```sh
+cargo run -p rigcheck --release -- check app/assets/models/printer.glb
+```
+
+This is gated in CI against the committed model. `rigcheck` is driven by the
+sidecar spec `app/assets/models/printer.machine.toml`, which is the single
+source of truth for the rig node contract — update it (not app code or this
+script) when adding, renaming, or reshaping a rig node.
 
 ## Audio (`app/assets/audio/*.wav`)
 
