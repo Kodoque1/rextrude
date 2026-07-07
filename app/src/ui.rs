@@ -434,6 +434,20 @@ pub fn playback_ui(
                                 });
                             });
                             if firmware_active {
+                                if firmware.loaded {
+                                    // Symmetric with the `else` branch below:
+                                    // returning to an already-loaded firmware
+                                    // session must re-arm `live` (so
+                                    // `advance_time` stays disabled instead of
+                                    // fighting `drive_firmware` over `time`)
+                                    // and mirror `playing` from the real
+                                    // emulator flag (so the codec header's
+                                    // blink/alert logic reflects reality
+                                    // instead of whatever Simulation-mode
+                                    // playback last left it as).
+                                    state.live = true;
+                                    state.playing = firmware.playing;
+                                }
                                 firmware_ui(ui, &mut firmware, &mut state);
                             } else {
                                 state.live = false;
