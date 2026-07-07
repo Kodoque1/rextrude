@@ -46,6 +46,8 @@ pub fn poll_file_pick(
     mut pending: ResMut<PendingGcodePick>,
     mut state: ResMut<PrintState>,
     mut alerts: ResMut<AlertState>,
+    #[cfg(target_arch = "wasm32")] ui_state: Res<crate::ui::UiState>,
+    #[cfg(target_arch = "wasm32")] firmware: Res<crate::firmware::FirmwareState>,
 ) {
     let Some(task) = pending.0.as_mut() else {
         return;
@@ -57,6 +59,21 @@ pub fn poll_file_pick(
     let Some((name, bytes)) = result else {
         return; // user cancelled the dialog
     };
+
+    // In Firmware mode, BROWSE streams the file into the live emulator's
+    // UART instead of the gcode-sim pipeline `load_import_bytes` drives.
+    #[cfg(target_arch = "wasm32")]
+    if ui_state.backend == crate::ui::Backend::Firmware {
+        match crate::loader::decode_gcode_bytes(&name, &bytes) {
+            Ok(text) => firmware.send_gcode(&text),
+            Err(err) => {
+                warn!("BROWSE: {err}");
+                alerts.raise(err, 4.0);
+            }
+        }
+        return;
+    }
+
     if let Err(err) = load_import_bytes(&mut state, name, &bytes) {
         warn!("BROWSE: {err}");
         alerts.raise(err, 4.0);
