@@ -413,6 +413,11 @@ pub fn playback_ui(
                         ui.add_space(6.0);
 
                         #[cfg(target_arch = "wasm32")]
+                        let firmware_active = ui_state.backend == Backend::Firmware;
+                        #[cfg(not(target_arch = "wasm32"))]
+                        let firmware_active = false;
+
+                        #[cfg(target_arch = "wasm32")]
                         {
                             section(ui, "BACKEND", |ui| {
                                 ui.horizontal(|ui| {
@@ -428,17 +433,21 @@ pub fn playback_ui(
                                     );
                                 });
                             });
-                            if ui_state.backend == Backend::Firmware {
+                            if firmware_active {
                                 firmware_ui(ui, &mut firmware, &mut state);
+                            } else {
+                                state.live = false;
                             }
                         }
 
                         section(ui, "IMPORT", |ui| {
                             import_section(ui, &mut state, &mut pending_pick, &mut sfx);
                         });
-                        section(ui, "PLAYBACK", |ui| {
-                            playback_section(ui, &mut state, &layer_visuals, &mut sfx);
-                        });
+                        if !firmware_active {
+                            section(ui, "PLAYBACK", |ui| {
+                                playback_section(ui, &mut state, &layer_visuals, &mut sfx);
+                            });
+                        }
                         poppable_section(ui, "MOTION DRO", &mut ui_state.dro, |ui| {
                             crate::panels::dro::show(ui, &state, &velocity);
                         });
@@ -519,7 +528,14 @@ fn firmware_ui(ui: &mut egui::Ui, firmware: &mut FirmwareState, state: &mut Prin
                 firmware.hotend_c, firmware.bed_c
             ));
         });
-        ui.label(format!("t = {:.1}s (LIVE)", state.time));
+        if firmware.playing {
+            ui.label(format!("t = {:.1}s (LIVE)", state.time));
+        } else {
+            ui.add(
+                egui::Slider::new(&mut state.time, 0.0..=state.total_time.max(0.001))
+                    .text("TIME (S)"),
+            );
+        }
     });
 
     if !firmware.loaded {

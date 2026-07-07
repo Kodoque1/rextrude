@@ -82,10 +82,15 @@ impl FirmwareState {
 /// appends whatever it did to `PrintState.toolpath`.
 pub fn drive_firmware(
     time: Res<Time>,
+    ui_state: Res<crate::ui::UiState>,
     mut firmware: ResMut<FirmwareState>,
     mut print_state: ResMut<PrintState>,
 ) {
-    if !firmware.loaded || !firmware.playing || !isEmulatorLoaded() {
+    if ui_state.backend != crate::ui::Backend::Firmware
+        || !firmware.loaded
+        || !firmware.playing
+        || !isEmulatorLoaded()
+    {
         return;
     }
 
