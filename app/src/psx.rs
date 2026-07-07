@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{
     Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
 };
-use bevy::window::WindowResized;
+use bevy::window::PrimaryWindow;
 use bevy_egui::{EguiGlobalSettings, PrimaryEguiContext};
 
 /// Internal render resolution: chunky enough to read as PSX-era, wide enough
@@ -112,18 +112,26 @@ pub fn setup_outer_camera(mut commands: Commands, canvas: Res<PsxCanvasImage>) {
     ));
 }
 
-/// Scales the canvas to fill the window (non-integer scale is fine here;
-/// it still reads as chunky pixels and avoids letterboxing surprises).
+/// Scales the canvas to fit the window (aspect-preserving; the shorter
+/// axis is letterboxed with fog color rather than cropping the scene).
+/// Recomputed every frame from the primary window's live size rather than
+/// only on `WindowResized` events: on web the canvas can already be at its
+/// full parent size before any resize event is delivered, which otherwise
+/// leaves the projection stuck at its default scale (rendering the fixed
+/// 640x360 texture at literal 1:1 size in the middle of the window).
 pub fn fit_canvas(
-    mut resized: MessageReader<WindowResized>,
     mut projection: Single<&mut Projection, With<OuterCamera>>,
+    window: Single<&Window, With<PrimaryWindow>>,
 ) {
     let Projection::Orthographic(projection) = &mut **projection else {
         return;
     };
-    for ev in resized.read() {
-        let h_scale = ev.width / RES_WIDTH as f32;
-        let v_scale = ev.height / RES_HEIGHT as f32;
-        projection.scale = 1.0 / h_scale.min(v_scale);
+    let (width, height) = (window.width(), window.height());
+    if width <= 0.0 || height <= 0.0 {
+        return;
+    }
+    let scale = 1.0 / (width / RES_WIDTH as f32).min(height / RES_HEIGHT as f32);
+    if projection.scale != scale {
+        projection.scale = scale;
     }
 }
