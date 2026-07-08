@@ -114,29 +114,17 @@ def ui_click():
     return [t * e * 0.35 for t, e in zip(tone, env)]
 
 
-def alert():
-    """The '!' sting: square+saw minor-second stab (E5 -> F5) + noise burst."""
-    n1 = int(0.16 * RATE)
-    n2 = int(0.34 * RATE)
-    e5, f5 = 659.3, 698.5
+def data_confirm():
+    """Gentle codec confirmation: two soft dual-sine tones, no noise burst.
 
-    stab1 = mix(gain(square(e5, n1), 0.4), gain(band_limited_saw(e5, n1), 0.5))
-    stab2 = mix(gain(square(f5, n2), 0.4), gain(band_limited_saw(f5, n2), 0.5))
-
-    seed = 0x2545F491
-    noise = []
-    for i in range(int(0.05 * RATE)):
-        seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF
-        noise.append((seed / 0x3FFFFFFF - 1.0) * math.exp(-i / (0.012 * RATE)))
-
-    env1 = env_ad(n1, 0.002, 0.20)
-    env2 = env_ad(n2, 0.002, 0.16)
-    out = mix(
-        [s * e for s, e in zip(stab1, env1)],
-        silence(0.16) + [s * e for s, e in zip(stab2, env2)],
-        gain(noise, 0.5),
-    )
-    return gain(out, 0.55)
+    Reads as an acknowledgment ("data received") rather than an alarm --
+    reuses the same codec_burst() voice as codec_beep()/codec_call() but at
+    lower gain and with soft attacks, so it stays quiet even at close range.
+    """
+    tone1 = codec_burst(1108.0, 1661.0, 0.07)
+    tone2 = codec_burst(1479.0, 2217.0, 0.09)
+    seq = tone1 + silence(0.05) + tone2
+    return gain(seq, 0.3)
 
 
 def stepper_hum():
@@ -170,7 +158,7 @@ def main():
     write_wav("codec_call.wav", codec_call())
     write_wav("codec_beep.wav", codec_beep())
     write_wav("ui_click.wav", ui_click())
-    write_wav("alert.wav", alert())
+    write_wav("data_confirm.wav", data_confirm())
     write_wav("stepper_hum.wav", stepper_hum())
 
 

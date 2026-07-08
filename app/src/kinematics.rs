@@ -8,6 +8,13 @@ use crate::printer_model::NOZZLE_Z;
 const SCREW_LEAD_MM: f32 = 8.0;
 /// Velocity spikes from scrubbing the time slider get clamped to this.
 const MAX_PLAUSIBLE_SPEED: f32 = 500.0;
+/// Below this speed, direction is noise (not a real heading), so agitation
+/// tracking is suspended rather than reacting to jitter while idle.
+const AGITATION_MIN_SPEED: f32 = 1.0;
+/// Peak-hold decay rate for `HeadVelocity.agitation`, in units/second --
+/// keeps a single-frame reversal audible for roughly 0.2s instead of
+/// vanishing on the very next frame.
+const AGITATION_DECAY_PER_S: f32 = 5.0;
 
 /// The X-gantry beam assembly: rides the two Z lead screws, so its world
 /// height equals the gcode Z coordinate.
@@ -37,7 +44,13 @@ pub struct LeadScrew {
 #[derive(Resource, Default)]
 pub struct HeadVelocity {
     pub mm_per_s: f32,
+    /// Smoothed [0,1] direction-change intensity: ~0 for a long straight
+    /// move, spikes toward 1 on a sharp turn/reversal (e.g. zig-zag infill).
+    /// Peak-held with decay so a single reversal stays audible briefly
+    /// rather than vanishing the next frame. Consumed by the stepper hum.
+    pub agitation: f32,
     prev: Option<Vec3>,
+    prev_dir: Option<Vec3>,
 }
 
 /// Decomposes the interpolated gcode position onto the bedslinger axes:
@@ -65,6 +78,27 @@ pub fn drive_kinematics(
             None => 0.0,
         };
     }
+
+    // Direction-change intensity: compares this frame's heading to the last
+    // one recorded (0 = straight, 1 = a full reversal). Only tracked above a
+    // minimum speed, since direction is meaningless noise near-stationary;
+    // `try_normalize` guards the same zero-length case for a stopped head.
+    let mut instant_agitation = 0.0;
+    if velocity.mm_per_s >= AGITATION_MIN_SPEED {
+        if let Some(prev) = velocity.prev {
+            if let Some(dir) = (pos - prev).try_normalize() {
+                if let Some(prev_dir) = velocity.prev_dir {
+                    instant_agitation = ((1.0 - dir.dot(prev_dir)) / 2.0).clamp(0.0, 1.0);
+                }
+                velocity.prev_dir = Some(dir);
+            }
+        }
+    }
+    // Peak-hold with decay so a single sharp turn stays audible for ~0.2s
+    // instead of vanishing on the very next frame.
+    let decayed = velocity.agitation - dt.max(0.0) * AGITATION_DECAY_PER_S;
+    velocity.agitation = instant_agitation.max(decayed).clamp(0.0, 1.0);
+
     velocity.prev = Some(pos);
 
     for mut transform in &mut rigs.p0() {

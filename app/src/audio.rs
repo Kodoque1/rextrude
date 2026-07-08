@@ -7,7 +7,7 @@ use bevy::prelude::*;
 pub enum SfxEvent {
     Click,
     Beep,
-    Alert,
+    DataConfirm,
     CodecCall,
 }
 
@@ -21,12 +21,16 @@ mod imp {
 
     /// Head speed (mm/s) mapped to full hum pitch/volume.
     const HUM_FULL_SPEED: f32 = 150.0;
+    /// Warble rate (Hz) layered onto the hum pitch while agitated (sharp
+    /// turns / zig-zag infill), giving direction changes an audibly busier
+    /// character instead of the hum staying identical to a smooth glide.
+    const AGITATION_WARBLE_HZ: f32 = 38.0;
 
     #[derive(Resource)]
     pub struct AudioHandles {
         click: Handle<AudioSource>,
         beep: Handle<AudioSource>,
-        alert: Handle<AudioSource>,
+        data_confirm: Handle<AudioSource>,
         codec_call: Handle<AudioSource>,
     }
 
@@ -40,7 +44,7 @@ mod imp {
         commands.insert_resource(AudioHandles {
             click: asset_server.load("audio/ui_click.wav"),
             beep: asset_server.load("audio/codec_beep.wav"),
-            alert: asset_server.load("audio/alert.wav"),
+            data_confirm: asset_server.load("audio/data_confirm.wav"),
             codec_call: asset_server.load("audio/codec_call.wav"),
         });
         commands.spawn((
@@ -59,15 +63,19 @@ mod imp {
             let handle = match event {
                 SfxEvent::Click => &handles.click,
                 SfxEvent::Beep => &handles.beep,
-                SfxEvent::Alert => &handles.alert,
+                SfxEvent::DataConfirm => &handles.data_confirm,
                 SfxEvent::CodecCall => &handles.codec_call,
             };
             commands.spawn((AudioPlayer::new(handle.clone()), PlaybackSettings::DESPAWN));
         }
     }
 
-    /// Pitch and volume of the stepper hum follow the executed head speed.
+    /// Pitch and volume of the stepper hum follow the executed head speed,
+    /// with an added warble/buzz on top scaled by `HeadVelocity.agitation`
+    /// -- so sharp turns and zig-zag infill sound audibly busier than a
+    /// long straight glide at the same speed.
     pub fn stepper_audio(
+        time: Res<Time>,
         velocity: Res<HeadVelocity>,
         mut hum: Query<&mut AudioSink, With<StepperHum>>,
     ) {
@@ -85,8 +93,12 @@ mod imp {
             sink.play();
         }
         let x = (speed / HUM_FULL_SPEED).clamp(0.0, 1.0);
-        sink.set_speed(0.85 + 0.5 * x);
-        sink.set_volume(Volume::Linear(0.12 + 0.45 * x));
+        let agitation = velocity.agitation;
+        let warble = (time.elapsed_secs() * AGITATION_WARBLE_HZ).sin();
+        let pitch = 0.85 + 0.5 * x + agitation * (0.12 + 0.10 * warble);
+        let volume = 0.12 + 0.45 * x + 0.1 * agitation;
+        sink.set_speed(pitch.max(0.1));
+        sink.set_volume(Volume::Linear(volume.clamp(0.0, 1.0)));
     }
 }
 
