@@ -8,6 +8,38 @@
         canvas { display: block; width: 100vw; height: 100vh; }
     </style>
     <link data-trunk rel="copy-dir" href="assets" data-target-path="assets">
+    <script>
+        // Browsers create an AudioContext in "suspended" state unless a user
+        // gesture has already occurred, and never auto-resume it later on
+        // their own. cpal's webaudio backend calls ctx.resume() exactly once,
+        // when rodio builds the output stream at Bevy Startup -- before any
+        // click has happened -- so without this shim sound stays silently
+        // dead for the entire session, even after real button clicks. This
+        // patches AudioContext so we can grab a reference to whichever
+        // instance(s) get created, then retries resume() on the first
+        // genuine user gesture (which does count, unlike the Startup call).
+        (function () {
+            var contexts = [];
+            var OrigAudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!OrigAudioContext) return;
+            function PatchedAudioContext() {
+                var ctx = new OrigAudioContext(...arguments);
+                contexts.push(ctx);
+                return ctx;
+            }
+            window.AudioContext = PatchedAudioContext;
+            if (window.webkitAudioContext) window.webkitAudioContext = PatchedAudioContext;
+
+            function unlock() {
+                contexts.forEach(function (ctx) {
+                    if (ctx.state === "suspended") ctx.resume().catch(function () {});
+                });
+            }
+            ["pointerdown", "keydown", "touchstart"].forEach(function (evt) {
+                window.addEventListener(evt, unlock, { capture: true });
+            });
+        })();
+    </script>
 </head>
 <body>
 </body>

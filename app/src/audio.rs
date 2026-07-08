@@ -11,12 +11,21 @@ pub enum SfxEvent {
     CodecCall,
 }
 
+/// Global sound on/off toggle, written by the UI's MUTE checkbox. Always
+/// registered (like [`SfxEvent`]) so the checkbox compiles and works
+/// regardless of the `audio` feature; only consulted by the systems below
+/// when there's actually sound to suppress.
+#[derive(Resource, Default)]
+pub struct AudioSettings {
+    pub muted: bool,
+}
+
 #[cfg(feature = "audio")]
 mod imp {
     use bevy::audio::{AudioPlayer, AudioSink, AudioSource, PlaybackSettings, Volume};
     use bevy::prelude::*;
 
-    use super::SfxEvent;
+    use super::{AudioSettings, SfxEvent};
     use crate::kinematics::HeadVelocity;
 
     /// Head speed (mm/s) mapped to full hum pitch/volume.
@@ -58,8 +67,15 @@ mod imp {
         mut commands: Commands,
         mut events: MessageReader<SfxEvent>,
         handles: Res<AudioHandles>,
+        settings: Res<AudioSettings>,
     ) {
         for event in events.read() {
+            // Still drain the reader while muted (skip via `continue`, not an
+            // early `return`) so events don't pile up and all replay at once
+            // the moment sound is re-enabled.
+            if settings.muted {
+                continue;
+            }
             let handle = match event {
                 SfxEvent::Click => &handles.click,
                 SfxEvent::Beep => &handles.beep,
@@ -77,11 +93,18 @@ mod imp {
     pub fn stepper_audio(
         time: Res<Time>,
         velocity: Res<HeadVelocity>,
+        settings: Res<AudioSettings>,
         mut hum: Query<&mut AudioSink, With<StepperHum>>,
     ) {
         let Ok(mut sink) = hum.single_mut() else {
             return;
         };
+        if settings.muted {
+            if !sink.is_paused() {
+                sink.pause();
+            }
+            return;
+        }
         let speed = velocity.mm_per_s;
         if speed <= 0.05 {
             if !sink.is_paused() {
