@@ -76,13 +76,7 @@ pub fn poll_dropped_file(
     // instead of the gcode-sim pipeline `load_import_bytes` drives -- same
     // dispatch as the BROWSE button in `file_picker::poll_file_pick`.
     if ui_state.backend == crate::ui::Backend::Firmware {
-        match crate::loader::decode_gcode_bytes(&name, &bytes) {
-            Ok(text) => firmware.send_gcode(&text),
-            Err(err) => {
-                warn!("{err}");
-                alerts.raise(err, 4.0);
-            }
-        }
+        firmware.stream_import(&name, &bytes, &mut alerts);
         return;
     }
 

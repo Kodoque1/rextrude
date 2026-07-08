@@ -12,13 +12,17 @@ pub fn load_gcode_text(state: &mut PrintState, file_name: String, gcode: &str) {
 }
 
 /// Decodes raw imported bytes to gcode text: `.bgcode` via the binary
-/// decoder, everything else validated as UTF-8 gcode text.
-pub fn decode_gcode_bytes(file_name: &str, bytes: &[u8]) -> Result<String, String> {
+/// decoder, everything else validated as UTF-8 gcode text. Borrows on the
+/// (common) plain-UTF-8 path; only bgcode decoding allocates.
+pub fn decode_gcode_bytes<'a>(
+    file_name: &str,
+    bytes: &'a [u8],
+) -> Result<std::borrow::Cow<'a, str>, String> {
     if crate::bgcode::is_bgcode(file_name, bytes) {
-        return crate::bgcode::decode(bytes);
+        return crate::bgcode::decode(bytes).map(std::borrow::Cow::Owned);
     }
     std::str::from_utf8(bytes)
-        .map(str::to_string)
+        .map(std::borrow::Cow::Borrowed)
         .map_err(|_| format!("{file_name}: not UTF-8 gcode and not bgcode"))
 }
 

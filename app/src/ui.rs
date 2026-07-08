@@ -242,7 +242,7 @@ fn import_section(
             }
         }
         if ui.button("BROWSE").clicked() {
-            crate::file_picker::spawn_file_pick(pending_pick);
+            crate::file_picker::spawn_file_pick(pending_pick, false);
             sfx.write(SfxEvent::Beep);
         }
     });
@@ -308,6 +308,10 @@ fn playback_section(
         state.time = time;
     }
 
+    layer_readout(ui, state, layer_visuals);
+}
+
+fn layer_readout(ui: &mut egui::Ui, state: &PrintState, layer_visuals: &LayerVisuals) {
     let layer_count = layer_visuals.layer_count();
     if layer_count > 0 {
         let idx = state.current_index();
@@ -433,24 +437,18 @@ pub fn playback_ui(
                                     );
                                 });
                             });
+                            // (live/playing bookkeeping happens in
+                            // `firmware::sync_backend_playback`, which runs
+                            // even while this panel is hidden.)
                             if firmware_active {
-                                if firmware.loaded {
-                                    // Symmetric with the `else` branch below:
-                                    // returning to an already-loaded firmware
-                                    // session must re-arm `live` (so
-                                    // `advance_time` stays disabled instead of
-                                    // fighting `drive_firmware` over `time`)
-                                    // and mirror `playing` from the real
-                                    // emulator flag (so the codec header's
-                                    // blink/alert logic reflects reality
-                                    // instead of whatever Simulation-mode
-                                    // playback last left it as).
-                                    state.live = true;
-                                    state.playing = firmware.playing;
-                                }
-                                firmware_ui(ui, &mut firmware, &mut state, &mut pending_pick);
-                            } else {
-                                state.live = false;
+                                firmware_ui(
+                                    ui,
+                                    &mut firmware,
+                                    &mut state,
+                                    &mut pending_pick,
+                                    &layer_visuals,
+                                    &mut sfx,
+                                );
                             }
                         }
 
@@ -523,6 +521,8 @@ fn firmware_ui(
     firmware: &mut FirmwareState,
     state: &mut PrintState,
     pending_pick: &mut crate::file_picker::PendingGcodePick,
+    layer_visuals: &LayerVisuals,
+    sfx: &mut MessageWriter<SfxEvent>,
 ) {
     section(ui, "FIRMWARE", |ui| {
         if !firmware.loaded {
@@ -541,6 +541,7 @@ fn firmware_ui(
             };
             if ui.button(label).clicked() {
                 firmware.playing = !firmware.playing;
+                sfx.write(SfxEvent::Click);
             }
             ui.label(format!(
                 "HOTEND {:.1}C   BED {:.1}C",
@@ -555,6 +556,7 @@ fn firmware_ui(
                     .text("TIME (S)"),
             );
         }
+        layer_readout(ui, state, layer_visuals);
     });
 
     if !firmware.loaded {
@@ -566,10 +568,12 @@ fn firmware_ui(
             for &(name, contents) in EXAMPLES {
                 if ui.button(name).clicked() {
                     firmware.send_gcode(contents);
+                    sfx.write(SfxEvent::Beep);
                 }
             }
             if ui.button("BROWSE").clicked() {
-                crate::file_picker::spawn_file_pick(pending_pick);
+                crate::file_picker::spawn_file_pick(pending_pick, true);
+                sfx.write(SfxEvent::Beep);
             }
         });
     });

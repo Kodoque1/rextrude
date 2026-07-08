@@ -28,6 +28,13 @@ pub struct LayerVisuals {
     layers: Vec<Layer>,
     visuals: Vec<Option<LayerVisual>>,
     generation: u64,
+    /// Number of toolpath events `layers` was last computed from. Tracked
+    /// separately from `generation` so a live session (firmware backend)
+    /// that keeps appending to the same toolpath -- without bumping
+    /// `generation`, which is reserved for "a new file/session was loaded"
+    /// -- still gets its layer list (and the active layer's mesh) kept in
+    /// sync every frame.
+    covered_len: usize,
     material: Option<Handle<StandardMaterial>>,
 }
 
@@ -80,9 +87,30 @@ pub fn update_layer_meshes(
         for visual in visuals.visuals.drain(..).flatten() {
             commands.entity(visual.entity).despawn();
         }
-        visuals.layers = split_into_layers(&state.toolpath, LAYER_Z_THRESHOLD);
-        visuals.visuals = visuals.layers.iter().map(|_| None).collect();
+        visuals.layers.clear();
+        visuals.covered_len = 0;
         visuals.generation = state.generation;
+    }
+
+    if state.toolpath.len() != visuals.covered_len {
+        let new_layers = split_into_layers(&state.toolpath, LAYER_Z_THRESHOLD);
+        // Preserve already-built meshes for layers whose bounds didn't
+        // change (everything but the still-growing tail, in the common
+        // case of a live session appending events): only reset the vec
+        // when a layer's start/end actually shifted, so finished layers
+        // aren't despawned and rebuilt every time the toolpath grows.
+        let unchanged = new_layers.len() >= visuals.layers.len()
+            && visuals.layers.iter().zip(&new_layers).all(|(a, b)| a == b);
+        if unchanged {
+            visuals.visuals.resize_with(new_layers.len(), || None);
+        } else {
+            for visual in visuals.visuals.drain(..).flatten() {
+                commands.entity(visual.entity).despawn();
+            }
+            visuals.visuals = new_layers.iter().map(|_| None).collect();
+        }
+        visuals.layers = new_layers;
+        visuals.covered_len = state.toolpath.len();
     }
 
     if visuals.layers.is_empty() {
