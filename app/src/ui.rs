@@ -107,7 +107,7 @@ pub fn update_alerts(
                 format!("DATA RECEIVED: {}", state.loaded_file_name.to_uppercase()),
                 3.5,
             );
-            sfx.write(SfxEvent::Alert);
+            sfx.write(SfxEvent::DataConfirm);
         }
     }
     if *was_playing && !state.playing && state.total_time > 0.0 && state.time >= state.total_time {
