@@ -1,6 +1,14 @@
 [build]
 features = ["audio"]
 
+# The pre_build hook regenerates assets/emu_bridge.js on every build; without
+# these watch settings that output retriggers the watcher, looping forever.
+# `watch` replaces the default watch set, so "." re-includes the app dir and
+# ../emu/src makes bridge TypeScript edits rebuild too.
+[watch]
+watch = [".", "../emu/src"]
+ignore = ["assets/emu_bridge.js"]
+
 [[hooks]]
 stage = "pre_build"
 command = "npm"

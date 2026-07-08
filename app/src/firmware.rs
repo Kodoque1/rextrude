@@ -75,6 +75,51 @@ impl FirmwareState {
             sendGcode(text);
         }
     }
+
+    /// Streams imported gcode bytes into the live emulator's UART -- the
+    /// Firmware-mode counterpart of `loader::load_import_bytes`, shared by
+    /// BROWSE and drag & drop. Raises an alert instead of silently dropping
+    /// the file when no firmware is loaded yet or the bytes don't decode.
+    pub fn stream_import(&self, file_name: &str, bytes: &[u8], alerts: &mut crate::ui::AlertState) {
+        if !self.loaded {
+            let err = format!("{file_name}: load firmware before importing");
+            warn!("{err}");
+            alerts.raise(err, 4.0);
+            return;
+        }
+        match crate::loader::decode_gcode_bytes(file_name, bytes) {
+            Ok(text) => self.send_gcode(&text),
+            Err(err) => {
+                warn!("{err}");
+                alerts.raise(err, 4.0);
+            }
+        }
+    }
+}
+
+/// Keeps `PrintState`'s scheduling flags in lockstep with the active backend
+/// every frame, independent of whether the side panel is drawn (it can be
+/// hidden with Tab). In Firmware mode with a live session, `live` must stay
+/// armed (so `advance_time` stays disabled instead of fighting
+/// `drive_firmware` over `time`) and `playing` mirrors the real emulator flag
+/// (so the codec header's blink/alert logic reflects reality). In Firmware
+/// mode with nothing loaded, a leftover Simulation print is parked -- its
+/// PLAYBACK controls are hidden, so it must not keep running uncontrollably.
+pub fn sync_backend_playback(
+    ui_state: Res<crate::ui::UiState>,
+    firmware: Res<FirmwareState>,
+    mut state: ResMut<PrintState>,
+) {
+    if ui_state.backend == crate::ui::Backend::Firmware {
+        if firmware.loaded {
+            state.live = true;
+            state.playing = firmware.playing;
+        } else if state.playing {
+            state.playing = false;
+        }
+    } else {
+        state.live = false;
+    }
 }
 
 /// Runs once per frame while the firmware backend is active: advances the

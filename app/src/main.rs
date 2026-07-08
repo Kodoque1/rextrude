@@ -96,7 +96,11 @@ fn main() {
         app.init_resource::<firmware::FirmwareState>();
         app.add_systems(
             Update,
-            (wasm_drop::poll_dropped_file, firmware::drive_firmware),
+            (
+                wasm_drop::poll_dropped_file,
+                firmware::sync_backend_playback,
+                firmware::drive_firmware,
+            ),
         );
     }
 
