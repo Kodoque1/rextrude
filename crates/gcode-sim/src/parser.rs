@@ -45,16 +45,31 @@ pub enum Command {
     WaitBedTemp { celsius: f32 },
 }
 
-/// Strips trailing `;` line comments and `(...)` inline comments.
-fn strip_comment(line: &str) -> &str {
+/// Strips trailing `;` line comments and `(...)` inline comments. Unlike a
+/// `;` comment (which always runs to end of line), a `(...)` comment is
+/// scoped to its own span -- gcode after a closed paren is still live, e.g.
+/// `G1 X10 (fan on) Y20` must keep the Y move. An unterminated `(` has no
+/// span to close, so (as with `;`) everything from it to end of line is
+/// dropped.
+fn strip_comment(line: &str) -> std::borrow::Cow<'_, str> {
     let line = match line.find(';') {
         Some(idx) => &line[..idx],
         None => line,
     };
-    match line.find('(') {
-        Some(idx) => &line[..idx],
-        None => line,
+    if !line.contains('(') {
+        return std::borrow::Cow::Borrowed(line);
     }
+    let mut out = String::with_capacity(line.len());
+    let mut depth = 0u32;
+    for ch in line.chars() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            _ if depth == 0 => out.push(ch),
+            _ => {}
+        }
+    }
+    std::borrow::Cow::Owned(out)
 }
 
 /// Splits a line into (letter, number) words, e.g. "G1 X10.5 F3000" ->
@@ -75,7 +90,11 @@ fn tokenize(line: &str) -> Vec<(char, f32)> {
         let value = if rest.is_empty() {
             Some(0.0)
         } else {
-            rest.parse::<f32>().ok()
+            // `f32::from_str` accepts "nan"/"inf"/"infinity" as valid
+            // literals; a stray one of those in a coordinate word must not
+            // poison `State.{x,y,z,e}` for the rest of the file, so treat
+            // non-finite parses the same as a parse failure.
+            rest.parse::<f32>().ok().filter(|v| v.is_finite())
         };
         if let Some(value) = value {
             words.push((letter.to_ascii_uppercase(), value));
@@ -110,7 +129,7 @@ fn temp_from_words(words: &[(char, f32)]) -> f32 {
 /// Parses a single line of gcode into a `Command`, or `None` for blank
 /// lines, comment-only lines, or commands we don't act on.
 pub fn parse_line(line: &str) -> Option<Command> {
-    let words = tokenize(strip_comment(line));
+    let words = tokenize(&strip_comment(line));
     let (&(code_letter, code_number), rest) = words.split_first()?;
 
     match (code_letter, code_number as i32) {
@@ -184,10 +203,53 @@ mod tests {
                 ..Default::default()
             })
         );
+        // Content after a *closed* paren comment is still live gcode.
         let cmd = parse_line("G1 (inline) X1").unwrap();
         assert_eq!(
             cmd,
             Command::LinearMove(MoveArgs {
+                x: Some(1.0),
+                ..Default::default()
+            })
+        );
+        let cmd = parse_line("G1 X10 (fan on) Y20").unwrap();
+        assert_eq!(
+            cmd,
+            Command::LinearMove(MoveArgs {
+                x: Some(10.0),
+                y: Some(20.0),
+                ..Default::default()
+            })
+        );
+        // An unterminated paren has no span to close, so (like `;`) it runs
+        // to end of line.
+        let cmd = parse_line("G1 X1 (oops Y5").unwrap();
+        assert_eq!(
+            cmd,
+            Command::LinearMove(MoveArgs {
+                x: Some(1.0),
+                ..Default::default()
+            })
+        );
+    }
+
+    #[test]
+    fn rejects_non_finite_values() {
+        // "nan"/"inf" are valid f32 literals per `FromStr`, but must not
+        // poison the toolpath -- treat them as an unparsable word instead.
+        let cmd = parse_line("G1 XNaN Y10").unwrap();
+        assert_eq!(
+            cmd,
+            Command::LinearMove(MoveArgs {
+                y: Some(10.0),
+                ..Default::default()
+            })
+        );
+        let cmd = parse_line("G1 Xinf Y-infinity Z5").unwrap();
+        assert_eq!(
+            cmd,
+            Command::LinearMove(MoveArgs {
+                z: Some(5.0),
                 ..Default::default()
             })
         );
