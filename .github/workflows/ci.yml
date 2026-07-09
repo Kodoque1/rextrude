@@ -55,6 +55,17 @@ jobs:
       - run: ruff check tools/
       - run: ruff format --check tools/
 
+  perf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Perf scaling guard (release)
+        run: cargo test -p motion --release --test perf_scaling -- --ignored
+      - name: Bench compile/smoke
+        run: cargo bench -p motion -- --test
+
   wasm:
     runs-on: ubuntu-latest
     steps:
@@ -82,7 +93,7 @@ jobs:
 
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [rust, ts, python, wasm]
+    needs: [rust, ts, python, wasm, perf]
     runs-on: ubuntu-latest
     permissions:
       pages: write

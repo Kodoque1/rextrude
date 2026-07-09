@@ -1,7 +1,7 @@
 use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology};
-use motion::{build_ribbon_mesh, split_into_layers, Layer, MeshData};
+use motion::{build_ribbon_mesh, extend_layers, Layer, MeshData};
 
 use crate::coords::gcode_to_bevy;
 use crate::playback::PrintState;
@@ -32,8 +32,9 @@ pub struct LayerVisuals {
     /// separately from `generation` so a live session (firmware backend)
     /// that keeps appending to the same toolpath -- without bumping
     /// `generation`, which is reserved for "a new file/session was loaded"
-    /// -- still gets its layer list (and the active layer's mesh) kept in
-    /// sync every frame.
+    /// -- still gets its layer list extended incrementally (via
+    /// `extend_layers`, which only rescans the still-growing tail layer
+    /// rather than the whole toolpath) every frame.
     covered_len: usize,
     material: Option<Handle<StandardMaterial>>,
 }
@@ -92,24 +93,28 @@ pub fn update_layer_meshes(
         visuals.generation = state.generation;
     }
 
-    if state.toolpath.len() != visuals.covered_len {
-        let new_layers = split_into_layers(&state.toolpath, LAYER_Z_THRESHOLD);
-        // Preserve already-built meshes for layers whose bounds didn't
-        // change (everything but the still-growing tail, in the common
-        // case of a live session appending events): only reset the vec
-        // when a layer's start/end actually shifted, so finished layers
-        // aren't despawned and rebuilt every time the toolpath grows.
-        let unchanged = new_layers.len() >= visuals.layers.len()
-            && visuals.layers.iter().zip(&new_layers).all(|(a, b)| a == b);
-        if unchanged {
-            visuals.visuals.resize_with(new_layers.len(), || None);
-        } else {
-            for visual in visuals.visuals.drain(..).flatten() {
-                commands.entity(visual.entity).despawn();
-            }
-            visuals.visuals = new_layers.iter().map(|_| None).collect();
+    if state.toolpath.len() < visuals.covered_len {
+        // Toolpath shrank without a generation bump - shouldn't happen, but
+        // recover with a full reset rather than indexing out of bounds.
+        for visual in visuals.visuals.drain(..).flatten() {
+            commands.entity(visual.entity).despawn();
         }
-        visuals.layers = new_layers;
+        visuals.layers.clear();
+        visuals.covered_len = 0;
+    }
+    if state.toolpath.len() != visuals.covered_len {
+        // Only rescans from the start of the still-growing tail layer, not
+        // the whole toolpath, so a live session appending events every
+        // frame stays O(appended) per frame instead of O(toolpath length).
+        extend_layers(&mut visuals.layers, &state.toolpath, LAYER_Z_THRESHOLD);
+        // Finished layers keep their entities untouched below: the mesh
+        // loop only rebuilds a layer whose `built_up_to` no longer matches
+        // its `desired_end`, and a finished layer's desired_end (its `end`)
+        // never changes once a later layer exists. The old tail layer keeps
+        // its visual slot too - same `start`, so the same LayerVisual is
+        // reused and simply rebuilt with the grown slice.
+        let n = visuals.layers.len();
+        visuals.visuals.resize_with(n, || None);
         visuals.covered_len = state.toolpath.len();
     }
 
@@ -207,5 +212,97 @@ pub fn update_layer_meshes(
             }
             (None, false) => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use motion::MotionEvent;
+
+    fn ev(t: f64, x: f32, z: f32, extruding: bool) -> MotionEvent {
+        MotionEvent {
+            t,
+            x,
+            y: 0.0,
+            z,
+            e: 0.0,
+            extruding,
+            line: 0,
+        }
+    }
+
+    /// `n` events at a fixed z, x incrementing by 1mm and t by 1s starting
+    /// at (`t0`, `x0`). All but the first extrude, so consecutive events
+    /// produce non-degenerate ribbon-mesh segments.
+    fn layer_events(n: usize, t0: f64, x0: f32, z: f32) -> Vec<MotionEvent> {
+        (0..n)
+            .map(|i| ev(t0 + i as f64, x0 + i as f32, z, i != 0))
+            .collect()
+    }
+
+    fn test_app() -> App {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.insert_resource(Assets::<Mesh>::default());
+        app.insert_resource(Assets::<StandardMaterial>::default());
+        app.init_resource::<PrintState>();
+        app.init_resource::<LayerVisuals>();
+        app.world_mut().spawn(PrintedLayerRoot);
+        app.add_systems(Update, update_layer_meshes);
+        app
+    }
+
+    /// Regression test for the bug fixed alongside `extend_layers`: a live
+    /// session appending events to the still-growing tail layer must not
+    /// despawn and rebuild every finished layer's mesh entity each frame.
+    #[test]
+    fn finished_layer_visual_survives_tail_growth() {
+        let mut app = test_app();
+
+        let mut events = layer_events(10, 0.0, 0.0, 0.0);
+        events.extend(layer_events(10, 10.0, 0.0, 0.3));
+        {
+            let mut state = app.world_mut().resource_mut::<PrintState>();
+            state.toolpath = events;
+            state.time = 19.0;
+            state.generation = 1;
+        }
+
+        app.update();
+
+        let entity_before = {
+            let visuals = app.world().resource::<LayerVisuals>();
+            assert_eq!(visuals.layer_count(), 2);
+            visuals.visuals[0]
+                .as_ref()
+                .expect("layer 0 mesh spawned")
+                .entity
+        };
+
+        {
+            let mut state = app.world_mut().resource_mut::<PrintState>();
+            let extra = layer_events(5, 20.0, 5.0, 0.3);
+            state.toolpath.extend(extra);
+            state.time = 24.0;
+        }
+
+        app.update();
+
+        let visuals = app.world().resource::<LayerVisuals>();
+        assert_eq!(
+            visuals.layer_count(),
+            2,
+            "tail growth at a constant z must not start a spurious new layer"
+        );
+        let entity_after = visuals.visuals[0]
+            .as_ref()
+            .expect("layer 0 mesh still present")
+            .entity;
+        assert_eq!(
+            entity_before, entity_after,
+            "finished layer's mesh entity must not be despawned/respawned \
+             when the tail layer grows"
+        );
     }
 }
