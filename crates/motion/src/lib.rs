@@ -5,7 +5,7 @@ mod geometry;
 mod layer;
 
 pub use geometry::{build_ribbon_mesh, MeshData};
-pub use layer::{split_into_layers, Layer};
+pub use layer::{extend_layers, split_into_layers, Layer};
 
 /// A single waypoint of the print head, timestamped in virtual seconds.
 ///
