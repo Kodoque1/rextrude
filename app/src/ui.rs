@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 
-use crate::audio::SfxEvent;
+use crate::audio::{AudioSettings, SfxEvent};
 use crate::layers::LayerVisuals;
 use crate::loader::load_gcode_text;
 use crate::playback::PrintState;
@@ -386,6 +386,7 @@ pub fn playback_ui(
     alerts: Res<AlertState>,
     velocity: Res<crate::kinematics::HeadVelocity>,
     mut sfx: MessageWriter<SfxEvent>,
+    mut audio_settings: ResMut<AudioSettings>,
     mut theme_applied: Local<bool>,
     mut pointer_over_ui: ResMut<PointerOverUi>,
     #[cfg(target_arch = "wasm32")] mut firmware: ResMut<FirmwareState>,
@@ -474,6 +475,7 @@ pub fn playback_ui(
                         });
                         section(ui, "SYSTEM", |ui| {
                             ui.checkbox(&mut ui_state.crt, "CRT SCANLINES");
+                            ui.checkbox(&mut audio_settings.muted, "MUTE SOUND");
                         });
                     });
             });

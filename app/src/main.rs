@@ -51,6 +51,7 @@ fn main() {
     .init_resource::<ui::PointerOverUi>()
     .init_resource::<file_picker::PendingGcodePick>()
     .add_message::<audio::SfxEvent>()
+    .init_resource::<audio::AudioSettings>()
     .add_systems(
         PreStartup,
         (
