@@ -11,6 +11,22 @@ pub fn load_gcode_text(state: &mut PrintState, file_name: String, gcode: &str) {
     state.load(file_name, sim.toolpath, source_lines, sim.thermal);
 }
 
+/// Hard cap on an imported file's raw byte size, checked before any parsing
+/// or decompression runs. This is the common choke point for every import
+/// path (BROWSE, drag & drop, autoload, firmware-mode send), so it also
+/// bounds the input to the `.bgcode` decompressor against decompression-bomb
+/// style inputs -- a well-formed print file is nowhere close to this size.
+const MAX_IMPORT_BYTES: usize = 256 * 1024 * 1024;
+
+fn enforce_import_size(file_name: &str, len: usize, limit: usize) -> Result<(), String> {
+    if len > limit {
+        return Err(format!(
+            "{file_name}: file too large ({len} bytes, limit {limit})"
+        ));
+    }
+    Ok(())
+}
+
 /// Decodes raw imported bytes to gcode text: `.bgcode` via the binary
 /// decoder, everything else validated as UTF-8 gcode text. Borrows on the
 /// (common) plain-UTF-8 path; only bgcode decoding allocates.
@@ -18,6 +34,7 @@ pub fn decode_gcode_bytes<'a>(
     file_name: &str,
     bytes: &'a [u8],
 ) -> Result<std::borrow::Cow<'a, str>, String> {
+    enforce_import_size(file_name, bytes.len(), MAX_IMPORT_BYTES)?;
     if crate::bgcode::is_bgcode(file_name, bytes) {
         return crate::bgcode::decode(bytes).map(std::borrow::Cow::Owned);
     }
@@ -99,4 +116,29 @@ pub fn handle_file_drop(
     _state: ResMut<PrintState>,
     _alerts: ResMut<AlertState>,
 ) {
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn import_size_cap_rejects_only_over_the_limit() {
+        assert!(enforce_import_size("f.gcode", 1000, 1000).is_ok());
+        assert!(enforce_import_size("f.gcode", 1001, 1000).is_err());
+    }
+
+    #[test]
+    fn plain_gcode_under_the_cap_decodes_as_utf8() {
+        let bytes = b"G28\nG1 X10\n";
+        let text = decode_gcode_bytes("f.gcode", bytes).unwrap();
+        assert_eq!(&*text, "G28\nG1 X10\n");
+    }
+
+    #[test]
+    fn invalid_utf8_under_the_cap_is_rejected_as_not_gcode() {
+        let bytes = [0xFFu8, 0xFE, 0xFD];
+        let err = decode_gcode_bytes("f.gcode", &bytes).unwrap_err();
+        assert!(err.contains("not UTF-8"), "unexpected error: {err}");
+    }
 }

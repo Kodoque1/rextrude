@@ -66,6 +66,26 @@ jobs:
       - name: Bench compile/smoke
         run: cargo bench -p motion -- --test
 
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install semgrep
+      - name: Semgrep (blocking on ERROR-severity findings)
+        run: semgrep --config .semgrep --severity ERROR --error .
+      - name: Semgrep (full report, informational)
+        if: always()
+        run: semgrep --config .semgrep .
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo-audit (RustSec advisories)
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit
+
   wasm:
     runs-on: ubuntu-latest
     steps:

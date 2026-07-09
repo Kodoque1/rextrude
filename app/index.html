@@ -2,6 +2,15 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
+    <!--
+      GitHub Pages can't set response headers, so this is the only CSP
+      enforcement available. wasm-unsafe-eval is required for the wasm
+      module; unsafe-inline covers the AudioContext-unlock shim below and
+      egui/trunk's inline styles; worker-src blob: covers wasm-bindgen's
+      worker bootstrap. No remote origins are allowed anywhere -- everything
+      the app needs ships in the bundle.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'">
     <title>3D Printer Simulator</title>
     <style>
         html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #111; }
