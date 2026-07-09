@@ -53,7 +53,7 @@ impl PrintState {
         }
         match self
             .toolpath
-            .binary_search_by(|ev| ev.t.partial_cmp(&self.time).unwrap())
+            .binary_search_by(|ev| ev.t.total_cmp(&self.time))
         {
             Ok(idx) => idx,
             Err(0) => 0,
@@ -122,5 +122,55 @@ pub fn advance_time(time: Res<Time>, mut state: ResMut<PrintState>) {
     if state.time >= state.total_time {
         state.time = state.total_time;
         state.playing = false;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ev(t: f64) -> MotionEvent {
+        MotionEvent {
+            t,
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            e: 0.0,
+            extruding: false,
+            line: 0,
+        }
+    }
+
+    /// Regression test: `current_index` used `partial_cmp(...).unwrap()`,
+    /// which panics if any event timestamp is `NaN` (`partial_cmp` returns
+    /// `None` for NaN comparisons, unlike infinity which is still totally
+    /// ordered and comparable). `total_cmp` gives NaN a well-defined slot in
+    /// the order instead of panicking.
+    #[test]
+    fn current_index_does_not_panic_on_nan_event_time() {
+        let mut state = PrintState {
+            toolpath: vec![ev(0.0), ev(1.0), ev(f64::NAN)],
+            ..Default::default()
+        };
+        state.time = 0.5;
+        let _ = state.current_index(); // must not panic
+
+        state.time = f64::NAN;
+        let _ = state.current_index(); // must not panic
+    }
+
+    /// Infinite (but non-NaN) event timestamps are a realistic hostile-file
+    /// outcome (see gcode-sim's huge-move handling) and were never the
+    /// source of the panic, but confirm they still resolve sensibly.
+    #[test]
+    fn current_index_handles_infinite_event_time() {
+        let mut state = PrintState {
+            toolpath: vec![ev(0.0), ev(1.0), ev(f64::INFINITY)],
+            ..Default::default()
+        };
+        state.time = 0.5;
+        assert_eq!(state.current_index(), 0);
+        state.time = f64::INFINITY;
+        assert_eq!(state.current_index(), 2);
     }
 }

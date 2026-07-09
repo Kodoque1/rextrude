@@ -8,11 +8,30 @@ pub fn is_bgcode(file_name: &str, bytes: &[u8]) -> bool {
     file_name.to_ascii_lowercase().ends_with(".bgcode") || bytes.starts_with(b"GCDE")
 }
 
+/// Hard cap on decoded ASCII gcode text size. `binarygcode` runs several
+/// decompression codecs (heatshrink/meatpack/deflate) internally with no
+/// output-size limit of its own, so a small, high-ratio `.bgcode` file could
+/// otherwise expand into an unbounded `String` (decompression-bomb style
+/// DoS). This check runs on the already-decoded output; it doesn't bound the
+/// decompressor's own peak working memory, only the final allocation we hold.
+const MAX_DECODED_GCODE_BYTES: usize = 512 * 1024 * 1024;
+
+fn enforce_decoded_size(text: String, limit: usize) -> Result<String, String> {
+    if text.len() > limit {
+        return Err(format!(
+            "bgcode decoded to {} bytes, exceeding the {limit} limit",
+            text.len()
+        ));
+    }
+    Ok(text)
+}
+
 /// Decode a whole `.bgcode` file to ASCII gcode text.
 pub fn decode(bytes: &[u8]) -> Result<String, String> {
-    binarygcode::binary_to_ascii(bytes, false)
+    let text = binarygcode::binary_to_ascii(bytes, false)
         .map(|s| s.into_string())
-        .map_err(|err| format!("bgcode decode failed: {err:?}"))
+        .map_err(|err| format!("bgcode decode failed: {err:?}"))?;
+    enforce_decoded_size(text, MAX_DECODED_GCODE_BYTES)
 }
 
 #[cfg(test)]
@@ -41,5 +60,12 @@ mod tests {
     #[test]
     fn plain_gcode_is_not_bgcode() {
         assert!(!is_bgcode("model.gcode", b"G28\n"));
+    }
+
+    #[test]
+    fn rejects_decoded_output_over_the_limit() {
+        let text = "x".repeat(1000);
+        assert!(enforce_decoded_size(text.clone(), 1000).is_ok());
+        assert!(enforce_decoded_size(text, 999).is_err());
     }
 }

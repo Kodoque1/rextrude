@@ -1,0 +1,125 @@
+rules:
+  # --- Rust: the g-code / .bgcode import pipeline is the app's only
+  # untrusted-input surface (client-side-only app; no server). These rules
+  # are scoped tightly to that pipeline to stay low-noise.
+
+  - id: gcode-partial-cmp-unwrap
+    severity: ERROR
+    languages: [rust]
+    message: >-
+      `partial_cmp(...).unwrap()` panics whenever the comparison is
+      unordered (e.g. a NaN float). Use `total_cmp` for a total order that
+      never panics, especially on data derived from an imported file.
+    patterns:
+      - pattern: $X.partial_cmp($Y).unwrap()
+
+  - id: gcode-unwrap-on-untrusted
+    severity: ERROR
+    languages: [rust]
+    message: >-
+      `.unwrap()`/`.expect(...)` on the g-code import path can panic on
+      hostile file contents. Handle the error (propagate a `Result`, or use
+      a documented invariant with a comment) instead of unwrapping.
+    patterns:
+      - pattern-either:
+          - pattern: $X.unwrap()
+          - pattern: $X.expect($MSG)
+      - pattern-not-inside: |
+          mod tests {
+            ...
+          }
+    paths:
+      include:
+        - /crates/gcode-sim/src/*.rs
+        - /app/src/loader.rs
+        - /app/src/bgcode.rs
+        - /app/src/playback.rs
+        - /app/src/firmware.rs
+
+  - id: gcode-wrapping-cast
+    severity: WARNING
+    languages: [rust]
+    message: >-
+      Narrowing/wrapping `as` cast on a value derived from parsed g-code.
+      Not necessarily a bug (review the call site), but these are exactly
+      the casts that silently truncate or wrap on hostile/extreme input
+      instead of erroring.
+    patterns:
+      - pattern-either:
+          - pattern: $E as i32
+          - pattern: $E as u32
+          - pattern: $E as usize
+      - pattern-not-inside: |
+          mod tests {
+            ...
+          }
+    paths:
+      include:
+        - /crates/gcode-sim/src/*.rs
+
+  - id: unbounded-decode-no-cap
+    severity: WARNING
+    languages: [rust]
+    message: >-
+      `binarygcode::binary_to_ascii` runs several decompression codecs
+      internally with no output-size limit of its own. Any call site must
+      check the decoded output's size before holding onto it (see
+      `bgcode::decode`'s `MAX_DECODED_GCODE_BYTES` check) to avoid a
+      decompression-bomb style DoS from a small hostile file.
+    patterns:
+      - pattern: binarygcode::binary_to_ascii(...)
+
+  # --- TypeScript/JavaScript: the JS half of the emulator has no injection
+  # sinks today. These rules are preventative regression guards, not fixes
+  # for an existing bug.
+
+  - id: js-dangerous-eval
+    severity: ERROR
+    languages: [typescript, javascript]
+    message: >-
+      Dynamic code evaluation (`eval`/`new Function`) executing
+      string-derived code. Avoid entirely; if unavoidable, the string must
+      never be influenced by imported file contents.
+    patterns:
+      - pattern-either:
+          - pattern: eval(...)
+          - pattern: new Function(...)
+    paths:
+      include:
+        - /emu/src
+        - /app/assets
+
+  - id: js-html-injection
+    severity: ERROR
+    languages: [typescript, javascript]
+    message: >-
+      Assigning HTML/markup directly can execute attacker-controlled
+      content if the source string ever derives from an imported file.
+      Prefer `textContent` or DOM APIs that don't parse markup.
+    patterns:
+      - pattern-either:
+          - pattern: $X.innerHTML = $V
+          - pattern: $X.outerHTML = $V
+          - pattern: document.write(...)
+          - pattern: $X.insertAdjacentHTML(...)
+    paths:
+      include:
+        - /emu/src
+        - /app/assets
+
+  - id: js-postmessage-no-origin
+    severity: WARNING
+    languages: [typescript, javascript]
+    message: >-
+      `message` event listeners and dynamic `import()` of a non-literal
+      specifier are worth a manual look: confirm the message's `origin` is
+      checked, and that the import specifier can't be influenced by
+      untrusted data.
+    patterns:
+      - pattern-either:
+          - pattern: $X.addEventListener("message", $HANDLER)
+          - pattern: import($SPEC)
+    paths:
+      include:
+        - /emu/src
+        - /app/assets

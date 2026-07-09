@@ -38,6 +38,12 @@ const TEMP_TOLERANCE_C: f32 = 2.0;
 const SAMPLE_DT: f64 = 0.5;
 /// Safety cap so a malformed target can never hang the wait loop.
 const MAX_WAIT_S: f64 = 600.0;
+/// Hard cap on the thermal timeline length. At SAMPLE_DT=0.5s this is ~11.5
+/// days of virtual print time — beyond any real file — and bounds both the
+/// sample Vec (~32 MB) and the advance_to loop against hostile inputs (e.g.
+/// a single `G1 X1e12 F1` line, which would otherwise drive the virtual
+/// clock to ~6e13s and loop ~1e14 times).
+const MAX_THERMAL_SAMPLES: usize = 2_000_000;
 
 /// A parsed + time-stepped gcode program: the motion stream plus the
 /// simulated thermal timeline.
@@ -106,6 +112,10 @@ impl Thermal {
     /// Catches the thermal timeline up with the motion clock.
     fn advance_to(&mut self, t: f64, config: &PrinterConfig) {
         while self.clock + SAMPLE_DT <= t {
+            if self.samples.len() >= MAX_THERMAL_SAMPLES {
+                self.clock = t; // stop sampling; keep the clock consistent
+                return;
+            }
             self.clock += SAMPLE_DT;
             self.step(SAMPLE_DT, config);
             self.push_sample();
@@ -439,5 +449,29 @@ mod tests {
         for pair in sim.thermal.windows(2) {
             assert!(pair[1].t >= pair[0].t);
         }
+    }
+
+    /// Regression test for a hostile-file DoS: a single move with a huge
+    /// coordinate/low feedrate drives the virtual clock to ~6e13s, which
+    /// would make `Thermal::advance_to` loop ~1e14 times (tab hang + OOM
+    /// from the unbounded `samples` Vec) without the `MAX_THERMAL_SAMPLES`
+    /// cap. Must complete promptly and stay within the cap.
+    #[test]
+    fn huge_move_caps_thermal_samples_instead_of_hanging() {
+        let gcode = "G1 X1e12 F1\n";
+        let sim = simulate_full(gcode, &PrinterConfig::default());
+        assert_eq!(sim.thermal.len(), MAX_THERMAL_SAMPLES);
+    }
+
+    /// A coordinate near f32::MAX makes `cartesian_dist` overflow to f32
+    /// infinity, driving the virtual clock to `inf`. The capped loop must
+    /// still terminate rather than looping forever trying to "catch up" to
+    /// an infinite target.
+    #[test]
+    fn infinite_duration_move_still_terminates() {
+        let gcode = "G1 X3e38 F1\n";
+        let sim = simulate_full(gcode, &PrinterConfig::default());
+        assert_eq!(sim.thermal.len(), MAX_THERMAL_SAMPLES);
+        assert!(sim.toolpath.last().unwrap().t.is_infinite());
     }
 }
