@@ -302,7 +302,16 @@ fn playback_section(
 
     let mut time = state.time;
     if ui
-        .add(egui::Slider::new(&mut time, 0.0..=state.total_time.max(0.001)).text("TIME (S)"))
+        .add(
+            // egui's smart-aim snaps to "round" numbers -- notably 0 -- when
+            // the pointer's aim window spans them. On a multi-hour print the
+            // TIME range (up to tens of thousands of seconds) is squeezed
+            // onto a ~100pt rail, so a fast drag's aim window is huge and
+            // readily spans 0, causing the slider to jump back to the start.
+            egui::Slider::new(&mut time, 0.0..=state.total_time.max(0.001))
+                .text("TIME (S)")
+                .smart_aim(false),
+        )
         .changed()
     {
         state.time = time;

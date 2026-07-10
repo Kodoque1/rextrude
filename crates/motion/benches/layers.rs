@@ -56,10 +56,21 @@ fn bench_ribbon_mesh(c: &mut Criterion) {
     });
 }
 
+/// Calibrates `FRAME_BUILD_BUDGET_EVENTS` in app/src/layers.rs: this is the
+/// worst case that budget allows building in one frame, so its wall-clock
+/// time here (native) should stay comfortably inside a 16ms frame budget.
+fn bench_ribbon_mesh_budget(c: &mut Criterion) {
+    let events = synth_toolpath(50_000, 4);
+    c.bench_function("build_ribbon_mesh/50k_events_frame_budget", |b| {
+        b.iter(|| build_ribbon_mesh(&events, 0.45, 0.2));
+    });
+}
+
 criterion_group!(
     benches,
     bench_split_full,
     bench_extend_amortized,
-    bench_ribbon_mesh
+    bench_ribbon_mesh,
+    bench_ribbon_mesh_budget
 );
 criterion_main!(benches);

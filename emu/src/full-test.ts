@@ -63,7 +63,7 @@ const gcodePath = fileURLToPath(
 );
 host.enqueueGcode(readFileSync(gcodePath, 'utf-8'));
 
-const finished = runUntil(() => host.linesRemaining === 0, 150);
+const finished = runUntil(() => !host.hasPending, 150);
 
 console.log(
   `\nhotend: ${thermal.hotend.celsius.toFixed(1)}C, bed: ${thermal.bed.celsius.toFixed(1)}C`,

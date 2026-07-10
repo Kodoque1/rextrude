@@ -19,6 +19,7 @@ mod playback;
 mod printer_model;
 mod printer_rig;
 mod psx;
+mod step_decimate;
 mod theme;
 mod ui;
 
