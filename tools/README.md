@@ -45,6 +45,32 @@ sidecar spec `app/assets/models/printer.machine.toml`, which is the single
 source of truth for the rig node contract — update it (not app code or this
 script) when adding, renaming, or reshaping a rig node.
 
+## Logo (`docs/logo-*.png`)
+
+Pillow + numpy, deterministic. Run from the repo root:
+
+```sh
+python3 tools/gen_logo.py
+```
+
+Renders the MGS-style REXTRUDE lockup (custom polygon letterforms, knocked-out
+SIMULATOR bar) as light/dark theme variants used by the README header. Layout
+ratios were derived once from the Metal Gear Solid logo via
+`python3 tools/gen_logo.py --analyze <path-to-reference.jpg>` (reference image
+not committed) and are embedded as constants.
+
+Like `rigcheck` for the printer model, the committed PNGs are gated in CI:
+
+```sh
+python3 tools/gen_logo.py --check
+```
+
+re-measures the committed images and asserts the design ratios, bar geometry,
+knockout legibility, and light/dark mask parity against the embedded targets.
+Locally, `--check --regen` additionally regenerates and compares sha256
+(byte-identical output needs matching Pillow/freetype versions, so this is
+not run in CI).
+
 ## Audio (`app/assets/audio/*.wav`)
 
 Pure-stdlib Python (numpy optional). Run from the repo root:

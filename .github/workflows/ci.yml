@@ -54,6 +54,12 @@ jobs:
       - run: pip install ruff
       - run: ruff check tools/
       - run: ruff format --check tools/
+      # Gate the committed README logo like rigcheck gates the printer model.
+      # Measurement checks only: the sha256 regen comparison (--regen) needs the
+      # exact Pillow/freetype versions the PNGs were generated with, so it stays
+      # a local-only check.
+      - run: pip install pillow numpy
+      - run: python3 tools/gen_logo.py --check
 
   perf:
     runs-on: ubuntu-latest

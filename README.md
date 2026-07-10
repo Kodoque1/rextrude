@@ -1,6 +1,9 @@
-# rextrude
-
-*Tactical Extrusion Action*
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png">
+    <img src="docs/logo-light.png" alt="REXTRUDE — Tactical Extrusion Action" width="560">
+  </picture>
+</div>
 
 [![CI](https://github.com/Kodoque1/rextrude/actions/workflows/ci.yml/badge.svg)](https://github.com/Kodoque1/rextrude/actions/workflows/ci.yml)
 [![Live Demo](https://img.shields.io/badge/demo-GitHub%20Pages-blue)](https://Kodoque1.github.io/rextrude/)
