@@ -58,6 +58,7 @@ TARGETS = {
     "bar_w": 0.9667,  # bar width / canvas w
     "bar_offset": 0.0,  # gap between bar bottom and block bottom / block height
     "bar_gaps": 0.0025,  # empty columns inside the bar extent / bar width (a real bar has ~none)
+    "letter_bar_gap": 0.0694,  # clearance between letter bottoms and bar top / block height
     "stroke": 0.2083,  # median horizontal ink run / block height
 }
 # Relative tolerance per metric for --check ("abs" entries are absolute).
@@ -72,6 +73,7 @@ TOLERANCES = {
     "bar_w": 0.05,
     "bar_offset": ("abs", 0.02),
     "bar_gaps": ("abs", 0.005),
+    "letter_bar_gap": 0.30,  # relative, so an overlap (gap 0) can never pass
     "stroke": 0.30,
 }
 
@@ -107,7 +109,9 @@ def analyze(mask: np.ndarray) -> dict[str, float]:
     if len(bands) < 2:
         raise ValueError(f"expected tagline + wordmark bands, found {len(bands)}")
     tag = bands[0]
-    block = max(bands, key=lambda b: b[1] - b[0])
+    # The block is everything below the tagline: letters and bar may render as
+    # separate bands (they are only merged in the reference by residual ink).
+    block = (bands[1][0], bands[-1][1])
     tag_cols = np.nonzero(mask[tag[0] : tag[1]].mean(axis=0) > 0.02)[0]
     block_h = block[1] - block[0]
     blk = mask[block[0] : block[1]]
@@ -123,6 +127,11 @@ def analyze(mask: np.ndarray) -> dict[str, float]:
         bar_h = (end - start) / block_h
         bar_offset = (block_h - end) / block_h
         letters = np.concatenate([blk[:start], blk[end:]])
+        # Clearance between the letter bottoms and the bar top: rows above the bar
+        # count as letter ink only above 0.1 (the reference has ~0.06 residual ink
+        # in its gap rows from the trademark glyph).
+        letter_rows = np.nonzero(blk[:start].mean(axis=1) > 0.1)[0]
+        letter_bar_gap = (start - 1 - letter_rows.max()) / block_h if len(letter_rows) else 0.0
         if len(bar_cols):
             extent = blk[start:end, bar_cols.min() : bar_cols.max() + 1]
             bar_w = extent.shape[1] / w
@@ -132,7 +141,7 @@ def analyze(mask: np.ndarray) -> dict[str, float]:
         else:
             bar_w = bar_gaps = 0.0
     else:
-        bar_h = bar_w = bar_offset = bar_gaps = 0.0
+        bar_h = bar_w = bar_offset = bar_gaps = letter_bar_gap = 0.0
         letters = blk
 
     run_lengths = [e - s for row in letters for s, e in _runs(row)]
@@ -149,6 +158,7 @@ def analyze(mask: np.ndarray) -> dict[str, float]:
         "bar_w": bar_w,
         "bar_offset": bar_offset,
         "bar_gaps": bar_gaps,
+        "letter_bar_gap": letter_bar_gap,
         "stroke": stroke,
     }
 
@@ -263,12 +273,16 @@ def render_mask() -> Image.Image:
         255,
     )
 
-    # 2. Wordmark: custom glyphs at full block height, spanning the canvas.
-    unit = block_h / 100.0
+    # 2. Wordmark: custom glyphs spanning the canvas, ending above the bar with
+    #    the measured clearance (the reference letters do not touch the bar).
+    letters_h = block_h * (1 - TARGETS["bar_h"] - TARGETS["letter_bar_gap"])
+    unit = letters_h / 100.0
     margin = SIDE_MARGIN * w
     total_units = (w - 2 * margin) / unit
     glyph_w = (total_units - LETTER_GAP * (len(WORDMARK) - 1)) / len(WORDMARK)
-    stroke = TARGETS["stroke"] * 100.0
+    # Stroke weight is measured relative to the whole block; keep it absolute
+    # rather than scaling it down with the shorter letter height.
+    stroke = TARGETS["stroke"] * block_h / letters_h * 100.0
     x_units = margin / unit
     for ch in WORDMARK:
         add, cut = glyph_polys(ch, glyph_w, stroke)
