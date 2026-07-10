@@ -14,7 +14,7 @@ on an ATmega2560 (RAMPS 1.4) via [avr8js](https://github.com/wokwi/avr8js).
 
 ## Demo
 
-<video src="https://github.com/Kodoque1/rextrude/releases/download/demo-media/rextrude_clip.mp4" controls loop muted playsinline width="100%"></video>
+<video src="https://github.com/user-attachments/assets/bb0ec547-602d-41bc-ad85-55d18ceb9582" controls loop muted playsinline width="100%"></video>
 
 ## Quickstart
 
