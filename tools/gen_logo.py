@@ -39,8 +39,7 @@ TAGLINE = "TACTICAL EXTRUSION ACTION"
 WORDMARK = "REXTRUDE"
 BAR_TEXT = "SIMULATOR"
 
-TAGLINE_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf"
-BAR_FONT = "/usr/share/fonts/truetype/roboto/unhinted/RobotoCondensed-Bold.ttf"
+FONT = "/usr/share/fonts/truetype/roboto/unhinted/RobotoCondensed-Bold.ttf"
 
 # Output geometry: 4x the 420x88 reference canvas, supersampled 4x while drawing.
 OUT_W, OUT_H = 1680, 352
@@ -174,36 +173,42 @@ def glyph_polys(ch: str, w: float, s: float) -> tuple[list, list]:
     """(add, cut) polygons for one letter on a cap-height-100 grid, y down.
 
     Squared MGS-style strokes; curves are hinted with 45-degree chamfer cuts.
+    Horizontal arms render thinner than vertical stems (`arm` vs `s`) since a
+    horizontal stroke measured equal to a vertical one reads heavier at this
+    weight; diagonals use `diag` for the same optical-weight reason.
     """
-    c = s * 0.6  # chamfer size
+    arm = 0.92 * s  # horizontal-arm thickness, optically balanced against s
+    diag = 1.2 * s  # diagonal-stroke horizontal projection, optically balanced against s
+    c = 0.75 * s  # chamfer size, shared by every curve hint
     if ch == "R":
+        # Crown (top arm + bowl) is one solid rect, not two arm-thickness rects:
+        # at this stroke weight the two would nearly touch, and thinning them
+        # independently to `arm` can open an unintended hairline seam between
+        # them. The design has no open bowl counter here, only the leg below.
         return [
             _rect(0, 0, s, 100),
-            _rect(0, 0, w, s),
-            _rect(w - s, 0, w, 55),
-            _rect(0, 55 - s, w, 55),
-            [(w - 1.4 * s, 55), (w - 0.4 * s, 55), (w, 100), (w - s, 100)],
+            _rect(0, 0, w, 55),
+            [(w - 1.4 * s, 55), (w - 0.2 * s, 55), (w, 100), (w - diag, 100)],
         ], []
     if ch == "E":
         return [
             _rect(0, 0, s, 100),
-            _rect(0, 0, w, s),
-            _rect(0, 100 - s, w, 100),
-            _rect(0, 50 - s / 2, 0.88 * w, 50 + s / 2),
+            _rect(0, 0, w, arm),
+            _rect(0, 100 - arm, w, 100),
+            _rect(0, 48 - arm / 2, 0.88 * w, 48 + arm / 2),
         ], []
     if ch == "X":
-        d = 1.2 * s  # diagonals need extra horizontal width to look equally heavy
         return [
-            [(0, 0), (d, 0), (w, 100), (w - d, 100)],
-            [(w - d, 0), (w, 0), (d, 100), (0, 100)],
+            [(0, 0), (diag, 0), (w, 100), (w - diag, 100)],
+            [(w - diag, 0), (w, 0), (diag, 100), (0, 100)],
         ], []
     if ch == "T":
-        return [_rect(0, 0, w, s), _rect(w / 2 - s / 2, 0, w / 2 + s / 2, 100)], []
+        return [_rect(0, 0, w, arm), _rect(w / 2 - s / 2, 0, w / 2 + s / 2, 100)], []
     if ch == "U":
         return [
             _rect(0, 0, s, 100),
             _rect(w - s, 0, w, 100),
-            _rect(0, 100 - s, w, 100),
+            _rect(0, 100 - arm, w, 100),
         ], [
             [(0, 100), (0, 100 - c), (c, 100)],
             [(w, 100), (w - c, 100), (w, 100 - c)],
@@ -211,17 +216,27 @@ def glyph_polys(ch: str, w: float, s: float) -> tuple[list, list]:
     if ch == "D":
         return [
             _rect(0, 0, s, 100),
-            _rect(0, 0, w, s),
-            _rect(0, 100 - s, w, 100),
+            _rect(0, 0, w, arm),
+            _rect(0, 100 - arm, w, 100),
             _rect(w - s, 0, w, 100),
         ], [
-            [(w, 0), (w - s, 0), (w, s)],
-            [(w, 100), (w - s, 100), (w, 100 - s)],
+            [(w, 0), (w - c, 0), (w, c)],
+            [(w, 100), (w - c, 100), (w, 100 - c)],
         ]
     raise ValueError(f"no glyph for {ch!r}")
 
 
 # --- rendering -----------------------------------------------------------------
+
+
+def _snap(v: float) -> float:
+    """Round a supersampled coordinate to the nearest output-pixel boundary.
+
+    Forces every stem edge to the same subpixel phase before the LANCZOS
+    downscale, so nominally-identical strokes don't pick up different
+    apparent weight from landing at different fractional offsets.
+    """
+    return round(v / SS) * SS
 
 
 def _font_for_cap(path: str, cap_px: float) -> ImageFont.FreeTypeFont:
@@ -240,14 +255,21 @@ def _draw_tracked(
     target_w: float,
     fill: int,
 ) -> None:
-    """Draw text glyph-by-glyph with tracking chosen to span target_w, cap top at top_y."""
+    """Draw text glyph-by-glyph, tracked to span target_w, cap top at top_y.
+
+    Word spaces get double tracking so word breaks read as a deliberate gap
+    rather than an accident of the space glyph's own (usually narrow) width.
+    """
     widths = [font.getlength(ch) for ch in text]
-    tracking = (target_w - sum(widths)) / (len(text) - 1)
+    gap_weights = [2.0 if ch == " " else 1.0 for ch in text[:-1]]
+    tracking = (target_w - sum(widths)) / sum(gap_weights) if gap_weights else 0.0
     cap_top = font.getbbox("T")[1]
     x = center_x - target_w / 2
-    for ch, cw in zip(text, widths):
-        draw.text((x, top_y - cap_top), ch, font=font, fill=fill)
-        x += cw + tracking
+    y = _snap(top_y - cap_top)
+    for i, (ch, cw) in enumerate(zip(text, widths)):
+        draw.text((_snap(x), y), ch, font=font, fill=fill)
+        if i < len(text) - 1:
+            x += cw + gap_weights[i] * tracking
 
 
 def render_mask() -> Image.Image:
@@ -256,17 +278,17 @@ def render_mask() -> Image.Image:
     mask = Image.new("L", (w, h), 0)
     draw = ImageDraw.Draw(mask)
 
-    tag_top = TOP_MARGIN * h
+    tag_top = _snap(TOP_MARGIN * h)
     tag_h = TARGETS["tagline_h"] * h
-    block_top = tag_top + tag_h + TARGETS["gap"] * h
+    block_top = _snap(tag_top + tag_h + TARGETS["gap"] * h)
     block_h = TARGETS["block_h"] * h
-    block_bottom = block_top + block_h
+    block_bottom = _snap(block_top + block_h)
 
     # 1. Tagline, tracked to the measured span.
     _draw_tracked(
         draw,
         TAGLINE,
-        _font_for_cap(TAGLINE_FONT, tag_h),
+        _font_for_cap(FONT, tag_h),
         w / 2,
         tag_top,
         TARGETS["tagline_w"] * w,
@@ -281,26 +303,36 @@ def render_mask() -> Image.Image:
     total_units = (w - 2 * margin) / unit
     glyph_w = (total_units - LETTER_GAP * (len(WORDMARK) - 1)) / len(WORDMARK)
     # Stroke weight is measured relative to the whole block; keep it absolute
-    # rather than scaling it down with the shorter letter height.
-    stroke = TARGETS["stroke"] * block_h / letters_h * 100.0
-    x_units = margin / unit
+    # rather than scaling it down with the shorter letter height. Snapped so
+    # independently-rounded left/right stem edges always land the same
+    # integer number of output pixels apart, for every glyph.
+    stroke = _snap(TARGETS["stroke"] * block_h / letters_h * 100.0 * unit) / unit
+    # Snap the per-glyph advance to whole output pixels too, then recompute
+    # the actual rendered span and recenter: cumulative advances are now
+    # exact multiples of the output-pixel grid, so no float drift can creep
+    # into the wordmark's centering.
+    advance_px = _snap((glyph_w + LETTER_GAP) * unit)
+    total_span = advance_px * (len(WORDMARK) - 1) + glyph_w * unit
+    x = _snap((w - total_span) / 2)
     for ch in WORDMARK:
         add, cut = glyph_polys(ch, glyph_w, stroke)
         for poly, fill in [(p, 255) for p in add] + [(p, 0) for p in cut]:
-            draw.polygon([((x_units + px) * unit, block_top + py * unit) for px, py in poly], fill=fill)
-        x_units += glyph_w + LETTER_GAP
+            draw.polygon([(_snap(x + px * unit), _snap(block_top + py * unit)) for px, py in poly], fill=fill)
+        x += advance_px
 
     # 3. Bar over the letters' lower portion, flush with the block bottom,
     #    with the bar text knocked out (transparent in the final PNGs).
     bar_w = TARGETS["bar_w"] * w
     bar_h = TARGETS["bar_h"] * block_h
-    bar_top = block_bottom - bar_h
-    draw.rectangle([(w - bar_w) / 2, bar_top, (w + bar_w) / 2, block_bottom], fill=255)
+    bar_top = _snap(block_bottom - bar_h)
+    bar_left = _snap((w - bar_w) / 2)
+    bar_right = _snap((w + bar_w) / 2)
+    draw.rectangle([bar_left, bar_top, bar_right, block_bottom], fill=255)
     cap = BAR_TEXT_CAP * bar_h
     _draw_tracked(
         draw,
         BAR_TEXT,
-        _font_for_cap(BAR_FONT, cap),
+        _font_for_cap(FONT, cap),
         w / 2,
         bar_top + (bar_h - cap) / 2,
         BAR_TEXT_WIDTH * bar_w,
