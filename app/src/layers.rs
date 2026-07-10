@@ -578,9 +578,9 @@ mod tests {
         {
             let visuals = app.world().resource::<LayerVisuals>();
             for (i, expected_entity) in entities_before.iter().enumerate() {
-                let visual = visuals.visuals[i]
-                    .as_ref()
-                    .unwrap_or_else(|| panic!("layer {i} visual must exist after scrubbing forward"));
+                let visual = visuals.visuals[i].as_ref().unwrap_or_else(|| {
+                    panic!("layer {i} visual must exist after scrubbing forward")
+                });
                 assert_eq!(
                     visual.entity, *expected_entity,
                     "layer {i} entity must be reused, not respawned"
@@ -593,7 +593,10 @@ mod tests {
             }
             let world = app.world();
             for entity in &entities_before {
-                assert_eq!(world.get::<Visibility>(*entity), Some(&Visibility::Inherited));
+                assert_eq!(
+                    world.get::<Visibility>(*entity),
+                    Some(&Visibility::Inherited)
+                );
             }
             let meshes = app.world().resource::<Assets<Mesh>>();
             assert_eq!(

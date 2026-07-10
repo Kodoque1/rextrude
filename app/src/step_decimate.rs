@@ -270,6 +270,9 @@ mod tests {
                 last_t = Some(t);
             }
         }
-        assert!(last_t.is_some(), "the run should have kept at least one event");
+        assert!(
+            last_t.is_some(),
+            "the run should have kept at least one event"
+        );
     }
 }
