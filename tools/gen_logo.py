@@ -181,15 +181,17 @@ def glyph_polys(ch: str, w: float, s: float) -> tuple[list, list]:
     diag = 1.2 * s  # diagonal-stroke horizontal projection, optically balanced against s
     c = 0.75 * s  # chamfer size, shared by every curve hint
     if ch == "R":
-        # Crown (top arm + bowl) is one solid rect, not two arm-thickness rects:
-        # at this stroke weight the two would nearly touch, and thinning them
-        # independently to `arm` can open an unintended hairline seam between
-        # them. The design has no open bowl counter here, only the leg below.
+        # Bowl counter position/height (21%-29% of cap height) measured from the
+        # R in "GEAR" on the MGS reference: a sharp, ~8-unit-tall open slit high
+        # in the bowl, with a solid margin on both sides (not touching the left
+        # stem or the right curve). One solid crown rect avoids the hairline
+        # seam a naive top-arm/bowl-bottom split can open at this stroke weight;
+        # the counter is then cut out of it explicitly, at a robust size.
         return [
             _rect(0, 0, s, 100),
             _rect(0, 0, w, 55),
             [(w - 1.4 * s, 55), (w - 0.2 * s, 55), (w, 100), (w - diag, 100)],
-        ], []
+        ], [_rect(s, 21, w - s, 29)]
     if ch == "E":
         return [
             _rect(0, 0, s, 100),
