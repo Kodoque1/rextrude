@@ -8,6 +8,7 @@
     "boot-test": "tsx src/boot-test.ts",
     "board-test": "tsx src/board-test.ts",
     "full-test": "tsx src/full-test.ts",
+    "uart-host-test": "tsx src/uart-host-test.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "fmt:check": "prettier --check .",

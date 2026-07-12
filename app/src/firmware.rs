@@ -26,15 +26,14 @@ extern "C" {
 }
 
 const MAX_UART_LOG_CHARS: usize = 20_000;
-/// Extrusion deltas below this are noise, not real deposition -- mirrors
-/// gcode-sim's own epsilon so both backends agree on what "extruding" means.
-const EXTRUDE_EPSILON: f32 = 1e-4;
 
 #[derive(Resource, Default)]
 pub struct FirmwareState {
     pub loaded: bool,
     pub playing: bool,
-    last_e: f32,
+    /// Collapses the raw per-microstep step-event stream into render-scale
+    /// MotionEvents (see `crate::step_decimate`).
+    decimator: crate::step_decimate::StepDecimator,
     pub hotend_c: f32,
     pub bed_c: f32,
     pub uart_log: String,
@@ -45,7 +44,7 @@ impl FirmwareState {
         createEmulator(hex_text);
         self.loaded = true;
         self.playing = true;
-        self.last_e = 0.0;
+        self.decimator.reset();
         self.hotend_c = 0.0;
         self.bed_c = 0.0;
         self.uart_log.clear();
@@ -144,21 +143,24 @@ pub fn drive_firmware(
 
     let flat = drainStepEvents();
     let cycles_per_second = cyclesPerSecond();
-    for chunk in flat.chunks_exact(5) {
+    let chunk_count = flat.len() / 5;
+    for (k, chunk) in flat.chunks_exact(5).enumerate() {
         let [cycle, x, y, z, e] = [chunk[0], chunk[1], chunk[2], chunk[3], chunk[4]];
-        let t = cycle / cycles_per_second;
-        let e = e as f32;
-        let extruding = e - firmware.last_e > EXTRUDE_EPSILON;
-        firmware.last_e = e;
-        print_state.toolpath.push(MotionEvent {
-            t,
-            x: x as f32,
-            y: y as f32,
-            z: z as f32,
-            e,
-            extruding,
-            line: 0,
-        });
+        let (x, y, z, e) = (x as f32, y as f32, z as f32, e as f32);
+        let frame_final = k + 1 == chunk_count;
+        // Collapses the raw per-microstep stream (see crate::step_decimate)
+        // and computes `extruding` against the last *kept* event.
+        if let Some(extruding) = firmware.decimator.accept(x, y, e, frame_final) {
+            print_state.toolpath.push(MotionEvent {
+                t: cycle / cycles_per_second,
+                x,
+                y,
+                z,
+                e,
+                extruding,
+                line: 0,
+            });
+        }
     }
 
     // Sync unconditionally, not just when a step event happened -- long
